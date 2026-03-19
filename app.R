@@ -10,30 +10,156 @@ library(scales)
 #   2. Nordic Aid / Article 142 (nationally funded, production-linked)
 #   3. ANC — Areas with Natural Constraints, Pillar 2 (co-financed)
 # ══════════════════════════════════════════════════════════════════
-col_p1     <- "#3266ad"
-col_nordic <- "#639922"
-col_anc    <- "#EF9F27"
-col_gap    <- "#E24B4A"
-col_accent <- "#2E4057"
+
+# ── Rekon Brand Palette ──────────────────────────────────────────
+# Primary
+col_sky      <- "#4A90E2"   # Sky Blue (primary brand color)
+col_green    <- "#4A5C36"   # Highland Green
+col_cloud    <- "#F3F4F6"   # Cloud White (backgrounds)
+
+# Secondary
+col_grey     <- "#6B7280"   # Mountain Grey
+col_brown    <- "#57534E"   # Soil Brown
+
+# Accent
+col_red      <- "#A12B26"   # Signal Red
+
+# Data Visualization (in order)
+col_p1       <- "#4A90E2"   # Sky Blue — Pillar 1
+col_nordic   <- "#4A5C36"   # Highland Green — Nordic Aid
+col_anc      <- "#E2B14A"   # Lichen Gold — ANC
+col_gap      <- "#A12B26"   # Signal Red — Gap
+col_accent   <- "#57534E"   # Soil Brown — totals/neutral
+col_basalt   <- "#5D6D7E"   # Basalt Grey
+col_moss     <- "#789A5B"   # Moss Green
+
 # ── UI ───────────────────────────────────────────────────────────
 ui <- fluidPage(
-  tags$head(tags$style(HTML("
-    body { font-family: Arial, Helvetica, sans-serif; background: #FAFBFC; }
-    .sidebar { background: #fff; border-right: 1px solid #E5E7EB; }
-    h3 { color: #2E4057; font-weight: 700; }
-    h4 { color: #2E4057; font-weight: 600; margin-top: 18px; }
-    .well { background: #fff; border: 1px solid #E5E7EB; }
-    .metric-box { background: #F2F4F7; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
-    .metric-label { font-size: 12px; color: #666; }
-    .metric-value { font-size: 22px; font-weight: 600; color: #2E4057; }
-    .metric-sub { font-size: 12px; color: #B83030; font-weight: 600; }
-    .source-note { font-size: 11px; color: #999; line-height: 1.5; margin-top: 8px; }
-  "))),
+  tags$head(
+    # Google Fonts: Montserrat (headings) + Lora (body)
+    tags$link(href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lora:wght@400;500;600&display=swap", rel = "stylesheet"),
+    tags$style(HTML(sprintf("
+      body {
+        font-family: 'Lora', Georgia, serif;
+        background: %s;
+        color: %s;
+        font-size: 13px;
+      }
+      h1, h2, h3, h4, h5, .metric-label, .metric-value, .metric-sub,
+      .brand-bar, .brand-title, .brand-sub, th {
+        font-family: 'Montserrat', Arial, sans-serif;
+      }
+      h3 { color: %s; font-weight: 700; }
+      h4 { color: %s; font-weight: 600; margin-top: 20px; margin-bottom: 10px; }
+      .well { background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; }
 
-  titlePanel(
+      /* ── Brand header bar ── */
+      .brand-bar {
+        background: %s;
+        color: #fff;
+        padding: 18px 28px;
+        border-radius: 10px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand-title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .brand-title span { font-weight: 400; opacity: 0.85; font-size: 15px; margin-left: 10px; }
+      .brand-sub {
+        font-size: 12px;
+        opacity: 0.8;
+        font-weight: 400;
+      }
+
+      /* ── Metric cards ── */
+      .metric-box {
+        background: #fff;
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+        border: 1px solid #E5E7EB;
+        border-left: 4px solid %s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      }
+      .metric-box.eu    { border-left-color: %s; }
+      .metric-box.cap   { border-left-color: %s; }
+      .metric-box.gap   { border-left-color: %s; }
+      .metric-box.rate  { border-left-color: %s; }
+      .metric-label {
+        font-size: 11px;
+        color: %s;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .metric-value { font-size: 26px; font-weight: 700; color: %s; }
+      .metric-sub { font-size: 11px; color: %s; font-weight: 600; margin-top: 2px; }
+
+      /* ── Section dividers ── */
+      .section-divider {
+        border: none;
+        border-top: 2px solid %s;
+        margin: 24px 0;
+      }
+
+      /* ── Source notes ── */
+      .source-note {
+        font-family: 'Lora', Georgia, serif;
+        font-size: 11px;
+        color: %s;
+        line-height: 1.6;
+        margin-top: 10px;
+      }
+
+      /* ── Help text ── */
+      .help-block {
+        font-family: 'Lora', Georgia, serif;
+        font-size: 11px;
+        color: %s;
+      }
+
+      /* ── Sidebar section headers ── */
+      .sidebar-section {
+        font-family: 'Montserrat', Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        color: %s;
+        padding: 6px 0 4px 0;
+        margin-top: 16px;
+        border-bottom: 2px solid %s;
+        margin-bottom: 10px;
+      }
+    ",
+    col_cloud, col_brown,          # body bg, text
+    col_brown, col_brown,          # h3, h4
+    col_accent,                     # brand bar bg
+    col_grey,                       # default metric border
+    col_p1, col_green, col_red, col_anc,  # metric borders
+    col_grey,                       # metric label
+    col_brown,                      # metric value
+    col_red,                        # metric sub
+    col_cloud,                      # section divider
+    col_grey,                       # source note
+    col_grey,                       # help text
+    col_brown, col_p1              # sidebar section
+    )))
+  ),
+
+  # ── Brand header ──
+  div(class = "brand-bar",
     div(
-      h3("Áætlun um stuðning ESB við íslenskan landbúnað", style = "margin-bottom: 2px;"),
-      p("CAP support estimation model — three channels", style = "color: #666; font-size: 13px; margin-top: 0;")
+      div(class = "brand-title", "rekon", span("| CAP stuðningsáætlun")),
+      div(class = "brand-sub", "Áætlun um stuðning ESB við íslenskan landbúnað — þrjár greiðsluleiðir")
+    ),
+    div(style = "text-align:right;",
+      div(style = "font-size:11px; opacity:0.7;", "Kári Gautason — mars 2026"),
+      div(style = "font-size:11px; opacity:0.7;", "Grounded Analysis & Strategic Insight")
     )
   ),
 
@@ -42,7 +168,7 @@ ui <- fluidPage(
       width = 4,
 
       # ── Iceland baseline ──
-      h4("Ísland: grunnforsendur"),
+      div(class = "sidebar-section", "Grunnforsendur"),
 
       sliderInput("eligible_ha", "Styrkhæft land (ha)",
                   min = 80000, max = 400000, value = 200000, step = 10000,
@@ -59,7 +185,7 @@ ui <- fluidPage(
       hr(),
 
       # ── Pillar 1 ──
-      h4("Stoð 1: Beingreiðslur (Pillar 1)"),
+      div(class = "sidebar-section", "Stoð 1: Beingreiðslur (Pillar 1)"),
       sliderInput("p1_rate", "Greiðsla á hektara (€/ha)",
                   min = 100, max = 400, value = 200, step = 10,
                   pre = "€"),
@@ -68,7 +194,7 @@ ui <- fluidPage(
       hr(),
 
       # ── Nordic Aid ──
-      h4("Stoð 2: Norðurslóðastuðningur (Art. 142)"),
+      div(class = "sidebar-section", "Norðurslóðastuðningur (Art. 142)"),
 
       sliderInput("milk_litres", "Mjólkurframleiðsla (M lítr.)",
                   min = 120, max = 170, value = 145, step = 5,
@@ -93,7 +219,7 @@ ui <- fluidPage(
       hr(),
 
       # ── ANC ──
-      h4("Stoð 3: Harðbýlisgreiðslur (ANC, Pillar 2)"),
+      div(class = "sidebar-section", "Harðbýlisgreiðslur (ANC, Pillar 2)"),
       sliderInput("anc_rate", "ANC greiðsla á hektara (€/ha)",
                   min = 100, max = 450, value = 250, step = 10, pre = "€"),
       helpText("Hámark norðan 62°: €450/ha. Finnland meðaltal: ~€217/ha."),
@@ -114,38 +240,40 @@ ui <- fluidPage(
 
       # ── Summary metrics ──
       fluidRow(
-        column(3, div(class = "metric-box",
+        column(3, div(class = "metric-box eu",
                       div(class = "metric-label", "Núverandi stuðningur"),
                       uiOutput("metric_current")
         )),
-        column(3, div(class = "metric-box",
+        column(3, div(class = "metric-box cap",
                       div(class = "metric-label", "CAP heildaráætlun"),
                       uiOutput("metric_cap_total")
         )),
-        column(3, div(class = "metric-box",
+        column(3, div(class = "metric-box gap",
                       div(class = "metric-label", "Munur (gap)"),
                       uiOutput("metric_gap")
         )),
-        column(3, div(class = "metric-box",
+        column(3, div(class = "metric-box rate",
                       div(class = "metric-label", "Nauðsynlegur €/ha"),
                       uiOutput("metric_needed_rate")
         ))
       ),
 
-      hr(),
+      # ── Who pays: stacked bar ──
+      uiOutput("payer_bar_html"),
+
+      hr(class = "section-divider"),
 
       # ── Main chart ──
       plotOutput("waterfall_chart", height = "420px"),
 
-      hr(),
+      hr(class = "section-divider"),
 
       # ── Breakdown ──
       fluidRow(
-        column(6, plotOutput("funding_source_chart", height = "320px")),
-        column(6, plotOutput("component_chart", height = "320px"))
+        column(12, plotOutput("component_chart", height = "320px"))
       ),
 
-      hr(),
+      hr(class = "section-divider"),
 
       # ── Detail table ──
       h4("Sundurliðun"),
@@ -159,13 +287,14 @@ ui <- fluidPage(
     )
   )
 )
+
 # ── SERVER ───────────────────────────────────────────────────────
 server <- function(input, output, session) {
 
   # ── Reactive calculations ──
 
   calcs <- reactive({
-    current_eur <- input$current_support_isk * 1000 / input$eur_isk  # €M
+    current_eur <- input$current_support_isk * 1000 / input$eur_isk  # M EUR
 
     # Pillar 1
     p1 <- input$eligible_ha * input$p1_rate / 1e6
@@ -206,33 +335,62 @@ server <- function(input, output, session) {
 
   output$metric_current <- renderUI({
     c <- calcs()
-    div(class = "metric-value", sprintf("€%.0fM", c$current_eur))
+    div(class = "metric-value", sprintf("\u20ac%.0fM", c$current_eur))
   })
 
   output$metric_cap_total <- renderUI({
     c <- calcs()
-    col <- if (c$total >= c$current_eur) col_nordic else col_gap
-    div(class = "metric-value", style = paste0("color:", col), sprintf("€%.0fM", c$total))
+    col <- if (c$total >= c$current_eur) col_green else col_red
+    div(class = "metric-value", style = paste0("color:", col), sprintf("\u20ac%.0fM", c$total))
   })
 
   output$metric_gap <- renderUI({
     c <- calcs()
     if (c$gap > 0) {
       tagList(
-        div(class = "metric-value", style = paste0("color:", col_gap), sprintf("−€%.0fM", c$gap)),
+        div(class = "metric-value", style = paste0("color:", col_red), sprintf("\u2212\u20ac%.0fM", c$gap)),
         div(class = "metric-sub", sprintf("%.0f%% vantar", c$gap / c$current_eur * 100))
       )
     } else {
-      div(class = "metric-value", style = paste0("color:", col_nordic), sprintf("+€%.0fM", abs(c$gap)))
+      div(class = "metric-value", style = paste0("color:", col_green), sprintf("+\u20ac%.0fM", abs(c$gap)))
     }
   })
 
   output$metric_needed_rate <- renderUI({
     c <- calcs()
     div(
-      div(class = "metric-value", sprintf("€%.0f/ha", c$needed_rate)),
-      div(class = "metric-sub", "til að jafna núverandi")
+      div(class = "metric-value", sprintf("\u20ac%.0f/ha", c$needed_rate)),
+      div(class = "metric-sub", style = paste0("color:", col_grey), "til a\u00f0 jafna n\u00faverandi")
     )
+  })
+
+  # ── Payer stacked bar (infographic style) ──
+
+  output$payer_bar_html <- renderUI({
+    c <- calcs()
+    total <- c$eu_pays + c$iceland_pays
+    eu_pct <- round(c$eu_pays / total * 100)
+    is_pct <- 100 - eu_pct
+
+    HTML(sprintf('
+      <div style="margin:18px 0 8px 0; font-family:Montserrat,sans-serif;">
+        <div style="font-size:13px;font-weight:600;color:%s;margin-bottom:8px;">
+          Hver borgar? &mdash; ESB: \u20ac%.0fM (%s%%) &nbsp;|&nbsp; \u00cdsland: \u20ac%.0fM (%s%%)
+        </div>
+        <div style="display:flex;height:32px;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            ESB \u20ac%.0fM
+          </div>
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            \u00cdsland \u20ac%.0fM
+          </div>
+        </div>
+      </div>',
+      col_brown,
+      c$eu_pays, eu_pct, c$iceland_pays, is_pct,
+      eu_pct, col_p1, c$eu_pays,
+      is_pct, col_accent, c$iceland_pays
+    ))
   })
 
   # ── Waterfall chart ──
@@ -241,9 +399,9 @@ server <- function(input, output, session) {
     c <- calcs()
 
     df <- data.frame(
-      label = factor(c("Stoð 1\nBeingreiðslur", "Art. 142\nNorðurslóðir", "Stoð 2\nHarðbýli (ANC)",
+      label = factor(c("Sto\u00f0 1\nBeingrei\u00f0slur", "Art. 142\nNor\u00f0ursl\u00f3\u00f0ir", "Sto\u00f0 2\nHar\u00f0b\u00fdli (ANC)",
                        "CAP samtals", "Munur (gap)"),
-                     levels = c("Stoð 1\nBeingreiðslur", "Art. 142\nNorðurslóðir", "Stoð 2\nHarðbýli (ANC)",
+                     levels = c("Sto\u00f0 1\nBeingrei\u00f0slur", "Art. 142\nNor\u00f0ursl\u00f3\u00f0ir", "Sto\u00f0 2\nHar\u00f0b\u00fdli (ANC)",
                                 "CAP samtals", "Munur (gap)")),
       value = c(c$p1, c$nordic, c$anc_total, c$total, max(c$gap, 0)),
       fill  = c(col_p1, col_nordic, col_anc, col_accent, col_gap),
@@ -254,84 +412,69 @@ server <- function(input, output, session) {
     ggplot(df, aes(x = label)) +
       geom_rect(aes(xmin = as.numeric(label) - 0.35, xmax = as.numeric(label) + 0.35,
                     ymin = ymin, ymax = ymax, fill = fill), colour = NA) +
-      geom_hline(yintercept = c$current_eur, linetype = "dashed", colour = "#333", linewidth = 0.7) +
+      geom_hline(yintercept = c$current_eur, linetype = "dashed", colour = col_brown, linewidth = 0.7) +
       annotate("text", x = 5.4, y = c$current_eur + 3,
-               label = sprintf("Núverandi: €%.0fM", c$current_eur),
-               hjust = 1, size = 3.5, colour = "#333", fontface = "bold") +
-      geom_text(aes(y = (ymin + ymax) / 2, label = sprintf("€%.0fM", ymax - ymin)),
-                size = 3.8, colour = "white", fontface = "bold") +
+               label = sprintf("N\u00faverandi: \u20ac%.0fM", c$current_eur),
+               hjust = 1, size = 3.5, colour = col_brown, fontface = "bold",
+               family = "Montserrat") +
+      geom_text(aes(y = (ymin + ymax) / 2, label = sprintf("\u20ac%.0fM", ymax - ymin)),
+                size = 3.8, colour = "white", fontface = "bold", family = "Montserrat") +
       scale_fill_identity() +
-      scale_y_continuous(labels = function(x) paste0("€", x, "M"), expand = expansion(mult = c(0, 0.08))) +
+      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"), expand = expansion(mult = c(0, 0.08))) +
       coord_cartesian(ylim = c(0, max(c$current_eur, c$total + c$gap) * 1.12)) +
-      labs(title = "CAP stuðningsáætlun fyrir Ísland",
-           subtitle = sprintf("Samtals €%.0fM vs. núverandi €%.0fM  |  Eligible area: %s ha  |  EUR/ISK: %s",
+      labs(title = "CAP stu\u00f0nings\u00e1\u00e6tlun fyrir \u00cdsland",
+           subtitle = sprintf("Samtals \u20ac%.0fM vs. n\u00faverandi \u20ac%.0fM  |  Eligible area: %s ha  |  EUR/ISK: %s",
                               c$total, c$current_eur, format(input$eligible_ha, big.mark = "."), input$eur_isk),
            x = NULL, y = NULL) +
-      theme_minimal(base_family = "Arial", base_size = 13) +
+      theme_minimal(base_family = "Montserrat", base_size = 13) +
       theme(
-        plot.title = element_text(face = "bold", colour = col_accent, size = 16),
-        plot.subtitle = element_text(colour = "#666", size = 11),
+        plot.title = element_text(face = "bold", colour = col_brown, size = 16),
+        plot.subtitle = element_text(colour = col_grey, size = 11, family = "Lora"),
         panel.grid.major.x = element_blank(),
         panel.grid.minor = element_blank(),
-        axis.text.x = element_text(size = 10, lineheight = 1.1)
+        axis.text.x = element_text(size = 10, lineheight = 1.1),
+        axis.text.y = element_text(colour = col_grey),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.background = element_rect(fill = "transparent", colour = NA)
       )
-  }, res = 110)
+  }, res = 110, bg = "transparent")
 
-  # ── Funding source chart ──
-
-  output$funding_source_chart <- renderPlot({
-    c <- calcs()
-
-    df <- data.frame(
-      source = factor(c("ESB greiðir", "Ísland greiðir"), levels = c("ESB greiðir", "Ísland greiðir")),
-      value = c(c$eu_pays, c$iceland_pays),
-      fill = c(col_p1, col_accent)
-    )
-
-    ggplot(df, aes(x = source, y = value, fill = fill)) +
-      geom_col(width = 0.5) +
-      geom_text(aes(label = sprintf("€%.0fM", value)), vjust = -0.5, size = 4, fontface = "bold", colour = col_accent) +
-      scale_fill_identity() +
-      scale_y_continuous(labels = function(x) paste0("€", x, "M"), expand = expansion(mult = c(0, 0.15))) +
-      labs(title = "Hver borgar?",
-           subtitle = sprintf("ESB: €%.0fM  |  Ísland: €%.0fM", c$eu_pays, c$iceland_pays),
-           x = NULL, y = NULL) +
-      theme_minimal(base_family = "Arial", base_size = 12) +
-      theme(
-        plot.title = element_text(face = "bold", colour = col_accent, size = 14),
-        plot.subtitle = element_text(colour = "#666", size = 10),
-        panel.grid.major.x = element_blank(),
-        panel.grid.minor = element_blank()
-      )
-  }, res = 110)
-
-  # ── Component breakdown chart ──
+  # ── Component breakdown chart (horizontal, grouped by channel) ──
 
   output$component_chart <- renderPlot({
     c <- calcs()
 
     df <- data.frame(
-      component = factor(c("Mjólk", "Sauðfé", "Nautgripir", "Beingreiðslur\n(Stoð 1)", "ANC\n(Stoð 2)"),
-                         levels = c("Beingreiðslur\n(Stoð 1)", "Mjólk", "Sauðfé", "Nautgripir", "ANC\n(Stoð 2)")),
-      value = c(c$milk, c$sheep, c$cows, c$p1, c$anc_total),
-      fill = c(rep(col_nordic, 3), col_p1, col_anc)
+      component = factor(
+        c("Beingrei\u00f0slur (Sto\u00f0 1)", "Mj\u00f3lk", "Sau\u00f0f\u00e9", "Nautgripir", "ANC (Sto\u00f0 2)"),
+        levels = rev(c("Beingrei\u00f0slur (Sto\u00f0 1)", "Mj\u00f3lk", "Sau\u00f0f\u00e9", "Nautgripir", "ANC (Sto\u00f0 2)"))
+      ),
+      value = c(c$p1, c$milk, c$sheep, c$cows, c$anc_total),
+      fill = c(col_p1, col_nordic, col_nordic, col_nordic, col_anc)
     )
 
     ggplot(df, aes(x = component, y = value, fill = fill)) +
-      geom_col(width = 0.55) +
-      geom_text(aes(label = sprintf("€%.1fM", value)), vjust = -0.5, size = 3.5, colour = col_accent) +
+      geom_col(width = 0.6) +
+      geom_text(aes(label = sprintf("\u20ac%.1fM", value)), hjust = -0.15, size = 3.8,
+                colour = col_brown, fontface = "bold", family = "Montserrat") +
       scale_fill_identity() +
-      scale_y_continuous(labels = function(x) paste0("€", x, "M"), expand = expansion(mult = c(0, 0.15))) +
-      labs(title = "Sundurliðun eftir greiðsluleiðum",
+      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"), expand = expansion(mult = c(0, 0.2))) +
+      coord_flip() +
+      labs(title = "Sundurli\u00f0un eftir grei\u00f0slulei\u00f0um",
+           subtitle = sprintf("Sky Blue = Sto\u00f0 1 (ESB)  |  Gr\u00e6nt = Art. 142 (\u00cdsland)  |  Gult = ANC (samf.)"),
            x = NULL, y = NULL) +
-      theme_minimal(base_family = "Arial", base_size = 12) +
+      theme_minimal(base_family = "Montserrat", base_size = 13) +
       theme(
-        plot.title = element_text(face = "bold", colour = col_accent, size = 14),
-        panel.grid.major.x = element_blank(),
+        plot.title = element_text(face = "bold", colour = col_brown, size = 14),
+        plot.subtitle = element_text(colour = col_grey, size = 10, family = "Lora"),
+        panel.grid.major.y = element_blank(),
         panel.grid.minor = element_blank(),
-        axis.text.x = element_text(size = 9, lineheight = 1.1)
+        axis.text.y = element_text(size = 11),
+        axis.text.x = element_text(colour = col_grey),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.background = element_rect(fill = "transparent", colour = NA)
       )
-  }, res = 110)
+  }, res = 110, bg = "transparent")
 
   # ── Detail table (color-coded) ──
 
@@ -340,68 +483,64 @@ server <- function(input, output, session) {
 
     # Helper: color-coded payer badge
     badge <- function(label, color) {
-      sprintf('<span style="display:inline-block;padding:2px 10px;border-radius:4px;background:%s;color:#fff;font-size:12px;font-weight:600;">%s</span>', color, label)
+      sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;letter-spacing:0.3px;">%s</span>', color, label)
     }
     badge_eu <- badge("ESB", col_p1)
     badge_is <- badge("\u00cdsland", col_accent)
     badge_both <- badge("Samfj\u00e1rm\u00f6gnun", col_anc)
 
     rows <- list(
-      # Pillar 1
       list("Sto\u00f0 1: Beingrei\u00f0slur", sprintf("\u20ac%.1fM", c$p1), badge_eu, TRUE),
-      list(sprintf("&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$p1_rate), "", "", FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$p1_rate), "", "", FALSE),
       list("", "", "", FALSE),
-      # Nordic Aid
       list("Art. 142: Nor\u00f0ursl\u00f3\u00f0astu\u00f0ningur", sprintf("\u20ac%.1fM", c$nordic), badge_is, TRUE),
-      list(sprintf("&nbsp;&nbsp;Mj\u00f3lk: %.0fM L \u00d7 \u20ac%.2f/L", input$milk_litres, input$milk_rate), sprintf("\u20ac%.1fM", c$milk), badge_is, FALSE),
-      list(sprintf("&nbsp;&nbsp;Sau\u00f0f\u00e9: %s \u00e6r \u00d7 \u20ac%s/kind", format(input$ewes, big.mark = "."), input$ewe_rate), sprintf("\u20ac%.1fM", c$sheep), badge_is, FALSE),
-      list(sprintf("&nbsp;&nbsp;Nautgripir: %s \u00d7 \u20ac%s/grip", format(input$cattle, big.mark = "."), input$cattle_rate), sprintf("\u20ac%.1fM", c$cows), badge_is, FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;Mj\u00f3lk: %.0fM L \u00d7 \u20ac%.2f/L", input$milk_litres, input$milk_rate), sprintf("\u20ac%.1fM", c$milk), badge_is, FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;Sau\u00f0f\u00e9: %s \u00e6r \u00d7 \u20ac%s/kind", format(input$ewes, big.mark = "."), input$ewe_rate), sprintf("\u20ac%.1fM", c$sheep), badge_is, FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;Nautgripir: %s \u00d7 \u20ac%s/grip", format(input$cattle, big.mark = "."), input$cattle_rate), sprintf("\u20ac%.1fM", c$cows), badge_is, FALSE),
       list("", "", "", FALSE),
-      # ANC
       list("Sto\u00f0 2: Har\u00f0b\u00fdlisgrei\u00f0slur (ANC)", sprintf("\u20ac%.1fM", c$anc_total), badge_both, TRUE),
-      list(sprintf("&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$anc_rate), "", "", FALSE),
-      list(sprintf("&nbsp;&nbsp;\u00dear af ESB (%s%%)", input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_eu), badge_eu, FALSE),
-      list(sprintf("&nbsp;&nbsp;\u00dear af \u00cdsland (%s%%)", 100 - input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_is), badge_is, FALSE)
+      list(sprintf("&nbsp;&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$anc_rate), "", "", FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;\u00dear af ESB (%s%%)", input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_eu), badge_eu, FALSE),
+      list(sprintf("&nbsp;&nbsp;&nbsp;\u00dear af \u00cdsland (%s%%)", 100 - input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_is), badge_is, FALSE)
     )
 
-    # Build table rows
     row_html <- sapply(rows, function(r) {
-      bg <- if (r[[4]]) ' style="background:#F2F4F7;font-weight:600;"' else ""
-      sprintf("<tr%s><td style='padding:6px 10px;'>%s</td><td style='padding:6px 10px;text-align:right;'>%s</td><td style='padding:6px 10px;text-align:center;'>%s</td></tr>",
+      bg <- if (r[[4]]) sprintf(' style="background:%s;font-weight:600;"', col_cloud) else ""
+      sprintf("<tr%s><td style='padding:7px 12px;font-family:Lora,serif;'>%s</td><td style='padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;font-weight:600;'>%s</td><td style='padding:7px 12px;text-align:center;'>%s</td></tr>",
               bg, r[[1]], r[[2]], r[[3]])
     })
 
-    # Summary rows
-    gap_color <- if (c$gap > 0) col_gap else col_nordic
+    gap_color <- if (c$gap > 0) col_red else col_green
     gap_sign <- if (c$gap > 0) sprintf("\u2212\u20ac%.1fM", c$gap) else sprintf("+\u20ac%.1fM", abs(c$gap))
 
     summary_rows <- sprintf('
-      <tr style="border-top:2px solid #333;background:#F2F4F7;font-weight:700;">
-        <td style="padding:8px 10px;">SAMTALS CAP</td>
-        <td style="padding:8px 10px;text-align:right;">\u20ac%.1fM</td>
-        <td style="padding:8px 10px;text-align:center;">%s &nbsp; %s</td>
+      <tr style="border-top:2px solid %s;background:%s;font-weight:700;">
+        <td style="padding:10px 12px;font-family:Montserrat,sans-serif;">SAMTALS CAP</td>
+        <td style="padding:10px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
+        <td style="padding:10px 12px;text-align:center;">%s &nbsp; %s</td>
       </tr>
       <tr style="font-weight:600;">
-        <td style="padding:6px 10px;">N\u00faverandi stu\u00f0ningur</td>
-        <td style="padding:6px 10px;text-align:right;">\u20ac%.1fM</td>
-        <td style="padding:6px 10px;text-align:center;">%s</td>
+        <td style="padding:7px 12px;font-family:Lora,serif;">N\u00faverandi stu\u00f0ningur</td>
+        <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
+        <td style="padding:7px 12px;text-align:center;">%s</td>
       </tr>
       <tr style="border-top:2px solid %s;font-weight:700;">
-        <td style="padding:8px 10px;color:%s;">MUNUR</td>
-        <td style="padding:8px 10px;text-align:right;color:%s;">%s</td>
+        <td style="padding:10px 12px;color:%s;font-family:Montserrat,sans-serif;">MUNUR</td>
+        <td style="padding:10px 12px;text-align:right;color:%s;font-family:Montserrat,sans-serif;font-size:15px;">%s</td>
         <td></td>
       </tr>',
+      col_brown, col_cloud,
       c$total, badge_eu, badge_is,
       c$current_eur, badge_is,
       gap_color, gap_color, gap_color, gap_sign
     )
 
     HTML(paste0(
-      '<table style="width:100%;border-collapse:collapse;font-size:13px;">',
-      '<thead><tr style="border-bottom:2px solid #333;">',
-      '<th style="padding:6px 10px;text-align:left;">Li\u00f0ur</th>',
-      '<th style="padding:6px 10px;text-align:right;">\u20acM/\u00e1ri</th>',
-      '<th style="padding:6px 10px;text-align:center;">Grei\u00f0andi</th>',
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">',
+      '<thead><tr style="border-bottom:2px solid ', col_brown, ';background:', col_cloud, ';">',
+      '<th style="padding:8px 12px;text-align:left;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;letter-spacing:0.5px;">Li\u00f0ur</th>',
+      '<th style="padding:8px 12px;text-align:right;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;letter-spacing:0.5px;">\u20acM/\u00e1ri</th>',
+      '<th style="padding:8px 12px;text-align:center;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;letter-spacing:0.5px;">Grei\u00f0andi</th>',
       '</tr></thead><tbody>',
       paste(row_html, collapse = ""),
       summary_rows,
@@ -409,4 +548,5 @@ server <- function(input, output, session) {
     ))
   })
 }
+
 shinyApp(ui, server)
