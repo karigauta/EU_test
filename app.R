@@ -50,11 +50,11 @@ ui <- fluidPage(
       helpText("120k = ræktað land. 200k = ræktað + viðhaldið tún. Source: LbhÍ 2025, FAO."),
 
       sliderInput("current_support_isk", "Núverandi stuðningur (ma.kr.)",
-                  min = 14, max = 30, value = 22, step = 0.5,
+                  min = 14, max = 30, value = 18, step = 0.5,
                   pre = "", post = " ma.kr."),
-      helpText("Búvörusamningur + Framleiðnisjóður + annað. BÍ staðfesti."),
+      helpText("Búvörusamningar."),
 
-      numericInput("eur_isk", "Gengi EUR/ISK", value = 155, min = 100, max = 200, step = 1),
+      numericInput("eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
 
       hr(),
 
@@ -149,7 +149,7 @@ ui <- fluidPage(
 
       # ── Detail table ──
       h4("Sundurliðun"),
-      tableOutput("detail_table"),
+      uiOutput("detail_table_html"),
 
       p(class = "source-note",
         "Athugasemd: Allar tölur eru áætlaðar á grundvelli bestu þekkingar og fordæma frá Finnlandi. ",
@@ -333,57 +333,80 @@ server <- function(input, output, session) {
       )
   }, res = 110)
 
-  # ── Detail table ──
+  # ── Detail table (color-coded) ──
 
-  output$detail_table <- renderTable({
+  output$detail_table_html <- renderUI({
     c <- calcs()
 
-    data.frame(
-      ` ` = c(
-        "Stoð 1: Beingreiðslur",
-        sprintf("  %s ha × €%s/ha", format(input$eligible_ha, big.mark = "."), input$p1_rate),
-        "",
-        "Art. 142: Norðurslóðastuðningur",
-        sprintf("  Mjólk: %.0fM L × €%.2f/L", input$milk_litres, input$milk_rate),
-        sprintf("  Sauðfé: %s ær × €%s/kind", format(input$ewes, big.mark = "."), input$ewe_rate),
-        sprintf("  Nautgripir: %s × €%s/grip", format(input$cattle, big.mark = "."), input$cattle_rate),
-        "",
-        "Stoð 2: Harðbýlisgreiðslur (ANC)",
-        sprintf("  %s ha × €%s/ha", format(input$eligible_ha, big.mark = "."), input$anc_rate),
-        sprintf("  Þar af ESB (%s%%)", input$eu_cofinance),
-        sprintf("  Þar af Ísland (%s%%)", 100 - input$eu_cofinance),
-        "",
-        "SAMTALS CAP",
-        "Núverandi stuðningur",
-        "MUNUR"
-      ),
-      `€M/ári` = c(
-        sprintf("%.1f", c$p1),
-        "", "",
-        sprintf("%.1f", c$nordic),
-        sprintf("%.1f", c$milk),
-        sprintf("%.1f", c$sheep),
-        sprintf("%.1f", c$cows),
-        "",
-        sprintf("%.1f", c$anc_total),
-        "",
-        sprintf("%.1f", c$anc_eu),
-        sprintf("%.1f", c$anc_is),
-        "",
-        sprintf("%.1f", c$total),
-        sprintf("%.1f", c$current_eur),
-        sprintf("%.1f", -c$gap)
-      ),
-      `Greiðandi` = c(
-        "ESB", "", "",
-        "Ísland", "Ísland", "Ísland", "Ísland", "",
-        "Samfjármögnun", "",
-        "ESB", "Ísland", "",
-        "", "Ísland (100%)", ""
-      ),
-      check.names = FALSE,
-      stringsAsFactors = FALSE
+    # Helper: color-coded payer badge
+    badge <- function(label, color) {
+      sprintf('<span style="display:inline-block;padding:2px 10px;border-radius:4px;background:%s;color:#fff;font-size:12px;font-weight:600;">%s</span>', color, label)
+    }
+    badge_eu <- badge("ESB", col_p1)
+    badge_is <- badge("\u00cdsland", col_accent)
+    badge_both <- badge("Samfj\u00e1rm\u00f6gnun", col_anc)
+
+    rows <- list(
+      # Pillar 1
+      list("Sto\u00f0 1: Beingrei\u00f0slur", sprintf("\u20ac%.1fM", c$p1), badge_eu, TRUE),
+      list(sprintf("&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$p1_rate), "", "", FALSE),
+      list("", "", "", FALSE),
+      # Nordic Aid
+      list("Art. 142: Nor\u00f0ursl\u00f3\u00f0astu\u00f0ningur", sprintf("\u20ac%.1fM", c$nordic), badge_is, TRUE),
+      list(sprintf("&nbsp;&nbsp;Mj\u00f3lk: %.0fM L \u00d7 \u20ac%.2f/L", input$milk_litres, input$milk_rate), sprintf("\u20ac%.1fM", c$milk), badge_is, FALSE),
+      list(sprintf("&nbsp;&nbsp;Sau\u00f0f\u00e9: %s \u00e6r \u00d7 \u20ac%s/kind", format(input$ewes, big.mark = "."), input$ewe_rate), sprintf("\u20ac%.1fM", c$sheep), badge_is, FALSE),
+      list(sprintf("&nbsp;&nbsp;Nautgripir: %s \u00d7 \u20ac%s/grip", format(input$cattle, big.mark = "."), input$cattle_rate), sprintf("\u20ac%.1fM", c$cows), badge_is, FALSE),
+      list("", "", "", FALSE),
+      # ANC
+      list("Sto\u00f0 2: Har\u00f0b\u00fdlisgrei\u00f0slur (ANC)", sprintf("\u20ac%.1fM", c$anc_total), badge_both, TRUE),
+      list(sprintf("&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$anc_rate), "", "", FALSE),
+      list(sprintf("&nbsp;&nbsp;\u00dear af ESB (%s%%)", input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_eu), badge_eu, FALSE),
+      list(sprintf("&nbsp;&nbsp;\u00dear af \u00cdsland (%s%%)", 100 - input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_is), badge_is, FALSE)
     )
-  }, align = "lrl", spacing = "s", width = "100%")
+
+    # Build table rows
+    row_html <- sapply(rows, function(r) {
+      bg <- if (r[[4]]) ' style="background:#F2F4F7;font-weight:600;"' else ""
+      sprintf("<tr%s><td style='padding:6px 10px;'>%s</td><td style='padding:6px 10px;text-align:right;'>%s</td><td style='padding:6px 10px;text-align:center;'>%s</td></tr>",
+              bg, r[[1]], r[[2]], r[[3]])
+    })
+
+    # Summary rows
+    gap_color <- if (c$gap > 0) col_gap else col_nordic
+    gap_sign <- if (c$gap > 0) sprintf("\u2212\u20ac%.1fM", c$gap) else sprintf("+\u20ac%.1fM", abs(c$gap))
+
+    summary_rows <- sprintf('
+      <tr style="border-top:2px solid #333;background:#F2F4F7;font-weight:700;">
+        <td style="padding:8px 10px;">SAMTALS CAP</td>
+        <td style="padding:8px 10px;text-align:right;">\u20ac%.1fM</td>
+        <td style="padding:8px 10px;text-align:center;">%s &nbsp; %s</td>
+      </tr>
+      <tr style="font-weight:600;">
+        <td style="padding:6px 10px;">N\u00faverandi stu\u00f0ningur</td>
+        <td style="padding:6px 10px;text-align:right;">\u20ac%.1fM</td>
+        <td style="padding:6px 10px;text-align:center;">%s</td>
+      </tr>
+      <tr style="border-top:2px solid %s;font-weight:700;">
+        <td style="padding:8px 10px;color:%s;">MUNUR</td>
+        <td style="padding:8px 10px;text-align:right;color:%s;">%s</td>
+        <td></td>
+      </tr>',
+      c$total, badge_eu, badge_is,
+      c$current_eur, badge_is,
+      gap_color, gap_color, gap_color, gap_sign
+    )
+
+    HTML(paste0(
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;">',
+      '<thead><tr style="border-bottom:2px solid #333;">',
+      '<th style="padding:6px 10px;text-align:left;">Li\u00f0ur</th>',
+      '<th style="padding:6px 10px;text-align:right;">\u20acM/\u00e1ri</th>',
+      '<th style="padding:6px 10px;text-align:center;">Grei\u00f0andi</th>',
+      '</tr></thead><tbody>',
+      paste(row_html, collapse = ""),
+      summary_rows,
+      '</tbody></table>'
+    ))
+  })
 }
 shinyApp(ui, server)
