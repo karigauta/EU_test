@@ -653,14 +653,19 @@ server <- function(input, output, session) {
   output$metric_net <- renderUI({
     ca <- cap_adjusted()
     t <- tariff_loss()
-    net <- ca$total - t$total_loss_eur
+    b <- baseline()
+    # Farmers lose: (1) revenue from price drops + (2) current Búvörusamningar
+    # Farmers gain: CAP payments
+    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    net <- ca$total - total_farmer_loss
     col <- if (net >= 0) col_green else col_red
     sign <- if (net >= 0) "+" else "\u2212"
     tagList(
       div(class = "metric-value", style = paste0("color:", col),
           sprintf("%s\u20ac%.0fM", sign, abs(net))),
       div(class = "metric-sub", style = paste0("color:", col_grey),
-          sprintf("CAP dekkar %.0f%% af tapi", ca$total / t$total_loss_eur * 100))
+          sprintf("CAP \u20ac%.0fM vs. tap \u20ac%.0fM + n\u00fav. stu\u00f0n. \u20ac%.0fM",
+                  ca$total, t$total_loss_eur, b$current_eur))
     )
   })
 
@@ -1043,22 +1048,20 @@ server <- function(input, output, session) {
     t <- tariff_loss()
     ca <- cap_adjusted()
     b <- baseline()
-    cs <- current_system()
-    net <- ca$total - t$total_loss_eur
 
-    # Lost cushion: difference between what current system would provide
-    # (same pot, fewer farms) and what CAP provides
-    lost_cushion <- b$current_eur - ca$total  # total €M difference
+    # Total farmer loss = revenue loss from tariffs + loss of current support
+    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    net <- ca$total - total_farmer_loss
 
     df <- data.frame(
-      label = factor(c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt",
-                       "Tapa\u00f0ur\np\u00fa\u00f0i", "Nett\u00f3 sta\u00f0a",
+      label = factor(c("Tekjutap\n(ver\u00f0l\u00e6kkun)", "Tapa\u00f0ur\nstu\u00f0n. pottur",
+                       "CAP\nlei\u00f0r\u00e9tt", "Nett\u00f3 sta\u00f0a\nb\u00e6nda",
                        "Sparna\u00f0ur\nneytenda"),
-                     levels = c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt",
-                                "Tapa\u00f0ur\np\u00fa\u00f0i", "Nett\u00f3 sta\u00f0a",
+                     levels = c("Tekjutap\n(ver\u00f0l\u00e6kkun)", "Tapa\u00f0ur\nstu\u00f0n. pottur",
+                                "CAP\nlei\u00f0r\u00e9tt", "Nett\u00f3 sta\u00f0a\nb\u00e6nda",
                                 "Sparna\u00f0ur\nneytenda")),
-      value = c(-t$total_loss_eur, ca$total, -lost_cushion, net, t$consumer_save_eur),
-      fill  = c(col_red, col_green, col_anc,
+      value = c(-t$total_loss_eur, -b$current_eur, ca$total, net, t$consumer_save_eur),
+      fill  = c(col_red, col_anc, col_green,
                 if (net >= 0) col_moss else col_gap, col_consumer)
     )
 
@@ -1071,9 +1074,11 @@ server <- function(input, output, session) {
       scale_fill_identity() +
       scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
                          expand = expansion(mult = c(0.15, 0.15))) +
-      labs(title = "Heildarjafnv\u00e6gi m. tapa\u00f0um p\u00fa\u00f0a",
-           subtitle = sprintf("CAP dekkar %.0f%% af tapi  |  Tapa\u00f0ur p\u00fa\u00f0i: \u20ac%.0fM (fastur pottur \u2212 CAP)",
-                              ca$total / t$total_loss_eur * 100, lost_cushion),
+      labs(title = "Heildarjafnv\u00e6gi b\u00e6nda",
+           subtitle = sprintf("Tap: \u20ac%.0fM (ver\u00f0) + \u20ac%.0fM (stu\u00f0n.) = \u20ac%.0fM  |  CAP: \u20ac%.0fM  |  Nett\u00f3: %s\u20ac%.0fM",
+                              t$total_loss_eur, b$current_eur, total_farmer_loss,
+                              ca$total,
+                              if (net >= 0) "+" else "\u2212", abs(net)),
            x = NULL, y = NULL) +
       rekon_theme(base_size = 12) +
       theme(
@@ -1119,9 +1124,10 @@ server <- function(input, output, session) {
     t <- tariff_loss()
     ca <- cap_adjusted()
     b <- baseline()
-    cs <- current_system()
-    net_farmer <- ca$total - t$total_loss_eur
-    lost_cushion <- b$current_eur - ca$total
+
+    # Total farmer loss = revenue loss + lost Búvörusamningar
+    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    net_farmer <- ca$total - total_farmer_loss
 
     badge <- function(label, color) {
       sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
@@ -1136,11 +1142,19 @@ server <- function(input, output, session) {
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>
       <tr>
-        <td style="padding:10px 14px;font-weight:600;font-style:italic;color:%s;">
-          &nbsp;&nbsp;\u00dear af: tapa\u00f0ur p\u00fa\u00f0i kerfis</td>
+        <td style="padding:10px 14px;font-style:italic;color:%s;">
+          &nbsp;&nbsp;\u00dear af: tekjutap (ver\u00f0l\u00e6kkun)</td>
         <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212\u20ac%.0fM</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
+        <td style="padding:10px 14px;"></td>
+        <td style="padding:10px 14px;"></td>
+      </tr>
+      <tr>
+        <td style="padding:10px 14px;font-style:italic;color:%s;">
+          &nbsp;&nbsp;\u00dear af: tapa\u00f0ur B\u00favörusm. pottur</td>
         <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212\u20ac%.0fM</td>
+        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
+        <td style="padding:10px 14px;"></td>
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>
       <tr style="background:%s;">
@@ -1165,17 +1179,20 @@ server <- function(input, output, session) {
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>',
       col_cloud,
-      col_red, t$total_loss_eur,
+      # Farmer total row
+      col_red, total_farmer_loss,
       ca$total,
       if (net_farmer >= 0) col_green else col_red,
       if (net_farmer >= 0) "+" else "\u2212",
       abs(net_farmer),
       if (net_farmer >= 0) badge("Jafnv\u00e6gi", col_moss) else badge("Tap", col_red),
-      # Lost cushion row
+      # Sub-row: revenue loss from tariffs
       col_grey,
-      col_anc, lost_cushion,
-      col_anc, lost_cushion,
-      badge("Falinn kostna\u00f0ur", col_anc),
+      col_red, t$total_loss_eur,
+      # Sub-row: lost Búvörusamningar pot
+      col_grey,
+      col_anc, b$current_eur,
+      badge("Fastur pottur tapadur", col_anc),
       # Consumer row
       col_cloud,
       col_moss, t$consumer_save_eur, badge("\u00c1vinningur", col_moss),
@@ -1257,37 +1274,45 @@ server <- function(input, output, session) {
 
     # Summary rows
     t <- tariff_loss()
-    net <- ca$total - t$total_loss_eur
+    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    net <- ca$total - total_farmer_loss
     net_color <- if (net >= 0) col_green else col_red
     net_sign <- if (net >= 0) sprintf("+\u20ac%.1fM", net) else sprintf("\u2212\u20ac%.1fM", abs(net))
 
     summary_rows <- sprintf('
       <tr style="border-top:2px solid %s;background:%s;font-weight:700;">
-        <td style="padding:10px 12px;font-family:Montserrat,sans-serif;">SAMTALS CAP</td>
+        <td style="padding:10px 12px;font-family:Montserrat,sans-serif;">SAMTALS CAP (n\u00fdtt kerfi)</td>
         <td style="padding:10px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
         <td style="padding:10px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
         <td style="padding:10px 12px;text-align:center;">%s &nbsp; %s</td>
       </tr>
       <tr style="font-weight:600;">
-        <td style="padding:7px 12px;font-family:Lora,serif;">N\u00faverandi stu\u00f0ningur</td>
-        <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;" colspan="2">\u20ac%.1fM</td>
+        <td style="padding:7px 12px;font-family:Lora,serif;">Tapa\u00f0 n\u00fav. stu\u00f0n. (B\u00favörusm.)</td>
+        <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;color:%s;" colspan="2">\u2212\u20ac%.1fM</td>
         <td style="padding:7px 12px;text-align:center;">%s</td>
       </tr>
       <tr style="font-weight:600;">
-        <td style="padding:7px 12px;font-family:Lora,serif;">Tekjutap bænda</td>
+        <td style="padding:7px 12px;font-family:Lora,serif;">Tekjutap (ver\u00f0l\u00e6kkun)</td>
+        <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;color:%s;" colspan="2">\u2212\u20ac%.1fM</td>
+        <td></td>
+      </tr>
+      <tr style="font-weight:600;background:%s;">
+        <td style="padding:7px 12px;font-family:Montserrat,sans-serif;">HEILDARTAP B\u00c6NDA</td>
         <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;color:%s;" colspan="2">\u2212\u20ac%.1fM</td>
         <td></td>
       </tr>
       <tr style="border-top:2px solid %s;font-weight:700;">
-        <td style="padding:10px 12px;color:%s;font-family:Montserrat,sans-serif;">NETT\u00d3 STA\u00d0A</td>
+        <td style="padding:10px 12px;color:%s;font-family:Montserrat,sans-serif;">NETT\u00d3 STA\u00d0A (CAP \u2212 heildartap)</td>
         <td style="padding:10px 12px;text-align:right;color:%s;font-family:Montserrat,sans-serif;font-size:15px;" colspan="2">%s</td>
         <td></td>
       </tr>',
       col_brown, col_cloud,
       cb$total, ca$total,
       badge_eu, badge_is,
-      b$current_eur, badge_is,
+      col_anc, b$current_eur, badge_is,
       col_red, t$total_loss_eur,
+      col_cloud,
+      col_red, total_farmer_loss,
       net_color, net_color, net_color, net_sign
     )
 
