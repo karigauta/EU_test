@@ -2,12 +2,13 @@ library(shiny)
 library(ggplot2)
 library(scales)
 # ══════════════════════════════════════════════════════════════════
-# CAP SUPPORT ESTIMATION MODEL FOR ICELAND
+# INTEGRATED CAP + TARIFF IMPACT MODEL FOR ICELAND
 # Rekon / Kári Gautason — March 2026
 #
-# Tab 1: CAP Support — three payment channels
-# Tab 2: Tariff Impact — modelling effects of removing tariff
-#         protection, calibrated on Finland/Sweden 1995 accession
+# A unified economic model:
+#   Baseline production → Price shock (tariff removal) →
+#   Supply response (elasticity) → Adjusted production →
+#   CAP payments on adjusted base → Net impact
 #
 # Key references:
 #   Kola, Hofreither & Rabinowicz (2000) — Nordic accession impacts
@@ -15,34 +16,33 @@ library(scales)
 #   OECD PSE Iceland (2025) — PSE 47%, prices 60% above border
 #   EU Evaluation of Nordic Aid Schemes (2007)
 #   Hagstofa Íslands, LbhÍ Rit 179 (2025)
+#   Jongeneel & Tonini (2008) — EU milk supply elasticities
+#   Revell & Oglethorpe (2003) — UK sheep supply response
 # ══════════════════════════════════════════════════════════════════
 
 # ── Rekon Brand Palette ──────────────────────────────────────────
-col_sky      <- "#4A90E2"   # Sky Blue (primary brand color)
-col_green    <- "#4A5C36"   # Highland Green
-col_cloud    <- "#F3F4F6"   # Cloud White (backgrounds)
-col_grey     <- "#6B7280"   # Mountain Grey
-col_brown    <- "#57534E"   # Soil Brown
-col_red      <- "#A12B26"   # Signal Red
-col_p1       <- "#4A90E2"   # Sky Blue — Pillar 1 / EU
-col_nordic   <- "#4A5C36"   # Highland Green — Nordic Aid
-col_anc      <- "#E2B14A"   # Lichen Gold — ANC
-col_gap      <- "#A12B26"   # Signal Red — Gap / Loss
-col_accent   <- "#57534E"   # Soil Brown — totals/neutral
-col_basalt   <- "#5D6D7E"   # Basalt Grey
-col_moss     <- "#789A5B"   # Moss Green
-col_consumer <- "#2E86AB"   # Consumer benefit blue
-col_before   <- "#D1D5DB"   # Light grey for "before" bars
+col_sky      <- "#4A90E2"
+col_green    <- "#4A5C36"
+col_cloud    <- "#F3F4F6"
+col_grey     <- "#6B7280"
+col_brown    <- "#57534E"
+col_red      <- "#A12B26"
+col_p1       <- "#4A90E2"
+col_nordic   <- "#4A5C36"
+col_anc      <- "#E2B14A"
+col_gap      <- "#A12B26"
+col_accent   <- "#57534E"
+col_basalt   <- "#5D6D7E"
+col_moss     <- "#789A5B"
+col_consumer <- "#2E86AB"
+col_before   <- "#D1D5DB"
 
-# ── Shared theme helper ──────────────────────────────────────────
 rekon_theme <- function(base_size = 13) {
   theme_minimal(base_family = "Montserrat", base_size = base_size) %+replace%
     theme(
-      plot.title = element_text(face = "bold", colour = col_brown, size = 16),
-      plot.subtitle = element_text(colour = col_grey, size = 11, family = "Lora"),
-      panel.grid.major.x = element_blank(),
+      plot.title = element_text(face = "bold", colour = col_brown, size = 16, margin = margin(b = 4)),
+      plot.subtitle = element_text(colour = col_grey, size = 11, family = "Lora", margin = margin(b = 12)),
       panel.grid.minor = element_blank(),
-      axis.text.y = element_text(colour = col_grey),
       plot.background = element_rect(fill = "transparent", colour = NA),
       panel.background = element_rect(fill = "transparent", colour = NA)
     )
@@ -50,75 +50,58 @@ rekon_theme <- function(base_size = 13) {
 
 # ── CSS ──────────────────────────────────────────────────────────
 app_css <- sprintf("
-  body {
-    font-family: 'Lora', Georgia, serif;
-    background: %s;
-    color: %s;
-    font-size: 13px;
-  }
-  h1, h2, h3, h4, h5, .metric-label, .metric-value, .metric-sub,
-  .brand-bar, .brand-title, .brand-sub, th,
-  .nav-tabs > li > a {
-    font-family: 'Montserrat', Arial, sans-serif;
-  }
+  body { font-family: 'Lora', Georgia, serif; background: %s; color: %s; font-size: 13px; }
+  h1,h2,h3,h4,h5,.metric-label,.metric-value,.metric-sub,
+  .brand-bar,.brand-title,.brand-sub,th,.nav-tabs>li>a,
+  .section-title { font-family: 'Montserrat', Arial, sans-serif; }
   h3 { color: %s; font-weight: 700; }
   h4 { color: %s; font-weight: 600; margin-top: 20px; margin-bottom: 10px; }
   .well { background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; }
 
-  /* Brand header */
   .brand-bar {
-    background: %s; color: #fff;
-    padding: 18px 28px; border-radius: 10px; margin-bottom: 22px;
+    background: %s; color: #fff; padding: 18px 28px;
+    border-radius: 10px; margin-bottom: 22px;
     display: flex; align-items: center; justify-content: space-between;
   }
   .brand-title { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
   .brand-title span { font-weight: 400; opacity: 0.85; font-size: 15px; margin-left: 10px; }
-  .brand-sub { font-size: 12px; opacity: 0.8; font-weight: 400; }
+  .brand-sub { font-size: 12px; opacity: 0.8; }
 
   /* Tabs */
   .nav-tabs { border-bottom: 2px solid %s; margin-bottom: 18px; }
-  .nav-tabs > li > a {
+  .nav-tabs>li>a {
     color: %s; font-weight: 600; font-size: 13px;
     border: none; border-bottom: 3px solid transparent;
     padding: 10px 18px; margin-bottom: -2px;
   }
-  .nav-tabs > li.active > a,
-  .nav-tabs > li.active > a:hover {
-    color: %s; border-bottom: 3px solid %s;
-    background: transparent;
+  .nav-tabs>li.active>a, .nav-tabs>li.active>a:hover {
+    color: %s; border-bottom: 3px solid %s; background: transparent;
   }
-  .nav-tabs > li > a:hover { color: %s; background: transparent; }
 
-  /* Metric cards */
   .metric-box {
     background: #fff; border-radius: 8px; padding: 16px 18px; margin-bottom: 12px;
     border: 1px solid #E5E7EB; border-left: 4px solid %s;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
-  .metric-box.eu    { border-left-color: %s; }
-  .metric-box.cap   { border-left-color: %s; }
-  .metric-box.gap   { border-left-color: %s; }
-  .metric-box.rate  { border-left-color: %s; }
-  .metric-box.loss  { border-left-color: %s; }
-  .metric-box.gain  { border-left-color: %s; }
-  .metric-box.farm  { border-left-color: %s; }
+  .metric-box.sky   { border-left-color: %s; }
+  .metric-box.green { border-left-color: %s; }
+  .metric-box.red   { border-left-color: %s; }
+  .metric-box.gold  { border-left-color: %s; }
+  .metric-box.moss  { border-left-color: %s; }
+  .metric-box.basalt{ border-left-color: %s; }
   .metric-label {
     font-size: 11px; color: %s; text-transform: uppercase;
     letter-spacing: 0.5px; font-weight: 600; margin-bottom: 4px;
   }
   .metric-value { font-size: 26px; font-weight: 700; color: %s; }
-  .metric-sub { font-size: 11px; color: %s; font-weight: 600; margin-top: 2px; }
+  .metric-sub { font-size: 11px; font-weight: 600; margin-top: 2px; }
 
   .section-divider { border: none; border-top: 2px solid %s; margin: 24px 0; }
-  .source-note {
-    font-family: 'Lora', Georgia, serif;
-    font-size: 11px; color: %s; line-height: 1.6; margin-top: 10px;
-  }
-  .help-block { font-family: 'Lora', Georgia, serif; font-size: 11px; color: %s; }
+  .source-note { font-family: 'Lora', serif; font-size: 11px; color: %s; line-height: 1.6; margin-top: 10px; }
+  .help-block { font-family: 'Lora', serif; font-size: 11px; color: %s; }
   .sidebar-section {
-    font-family: 'Montserrat', Arial, sans-serif;
-    font-size: 13px; font-weight: 600; color: %s;
-    padding: 6px 0 4px 0; margin-top: 16px;
+    font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 600;
+    color: %s; padding: 6px 0 4px 0; margin-top: 16px;
     border-bottom: 2px solid %s; margin-bottom: 10px;
   }
   .context-box {
@@ -127,18 +110,28 @@ app_css <- sprintf("
     font-size: 12px; line-height: 1.6;
   }
   .context-box strong { color: %s; }
+  .flow-arrow {
+    text-align: center; font-size: 24px; color: %s;
+    margin: 6px 0; font-family: Montserrat, sans-serif;
+  }
+  .section-title {
+    font-size: 15px; font-weight: 700; color: %s;
+    border-left: 4px solid %s; padding-left: 12px;
+    margin: 24px 0 14px 0;
+  }
 ",
-  col_cloud, col_brown,                         # body
-  col_brown, col_brown,                          # h3, h4
-  col_accent,                                     # brand bar
-  col_p1, col_grey, col_brown, col_p1, col_brown, # tabs
-  col_grey,                                        # metric default
-  col_p1, col_green, col_red, col_anc,            # metric variants
-  col_red, col_moss, col_basalt,                   # loss, gain, farm
-  col_grey, col_brown, col_red,                    # label, value, sub
-  col_cloud, col_grey, col_grey,                   # divider, source, help
-  col_brown, col_p1,                               # sidebar section
-  col_basalt, col_brown                            # context box
+  col_cloud, col_brown,
+  col_brown, col_brown,
+  col_accent,
+  col_p1, col_grey, col_brown, col_p1,
+  col_grey,
+  col_p1, col_green, col_red, col_anc, col_moss, col_basalt,
+  col_grey, col_brown,
+  col_cloud, col_grey, col_grey,
+  col_brown, col_p1,
+  col_basalt, col_brown,
+  col_p1,
+  col_brown, col_p1
 )
 
 # ══════════════════════════════════════════════════════════════════
@@ -150,11 +143,10 @@ ui <- fluidPage(
     tags$style(HTML(app_css))
   ),
 
-  # ── Brand header ──
   div(class = "brand-bar",
     div(
-      div(class = "brand-title", "rekon", span("| CAP stuðningsáætlun")),
-      div(class = "brand-sub", "Áætlun um stuðning ESB við íslenskan landbúnað")
+      div(class = "brand-title", "rekon", span("| Landbúnaðarlíkan ESB-aðildar")),
+      div(class = "brand-sub", "Samþætt líkan: tollaáhrif \u2192 framleiðslubreyting \u2192 CAP-stuðningur \u2192 nettóstaða")
     ),
     div(style = "text-align:right;",
       div(style = "font-size:11px; opacity:0.7;", "Kári Gautason — mars 2026"),
@@ -162,230 +154,271 @@ ui <- fluidPage(
     )
   ),
 
-  # ══════════════════════════════════════════════════════════════
-  # TABS
-  # ══════════════════════════════════════════════════════════════
-  tabsetPanel(
-    id = "main_tabs",
+  sidebarLayout(
+    sidebarPanel(
+      width = 4,
 
-    # ════════════════════════════════════════════════════════════
-    # TAB 1: CAP SUPPORT
-    # ════════════════════════════════════════════════════════════
-    tabPanel("Greiðsluleiðir CAP",
-      sidebarLayout(
-        sidebarPanel(
-          width = 4,
-          div(class = "sidebar-section", "Grunnforsendur"),
-          sliderInput("eligible_ha", "Styrkhæft land (ha)",
-                      min = 80000, max = 400000, value = 200000, step = 10000,
-                      pre = "", post = " ha"),
-          helpText("120k = ræktað land. 200k = ræktað + viðhaldið tún. Source: LbhÍ 2025, FAO."),
-          sliderInput("current_support_isk", "Núverandi stuðningur (ma.kr.)",
-                      min = 14, max = 30, value = 18, step = 0.5,
-                      pre = "", post = " ma.kr."),
-          helpText("Búvörusamningar."),
-          numericInput("eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
-          hr(),
-          div(class = "sidebar-section", "Stoð 1: Beingreiðslur (Pillar 1)"),
-          sliderInput("p1_rate", "Greiðsla á hektara (€/ha)",
-                      min = 100, max = 400, value = 200, step = 10, pre = "€"),
-          helpText("EU lágmark: €200 (2023), €215 (2027). EU meðaltal: ~€243. Nýju ríkin: €130–180."),
-          hr(),
-          div(class = "sidebar-section", "Norðurslóðastuðningur (Art. 142)"),
-          sliderInput("milk_litres", "Mjólkurframleiðsla (M lítr.)",
-                      min = 120, max = 170, value = 145, step = 5, post = "M L"),
-          sliderInput("milk_rate", "Mjólkurgreiðsla (€/lítra)",
-                      min = 0.04, max = 0.15, value = 0.09, step = 0.01, pre = "€"),
-          helpText("Finnland: €0.07 (suður) – €0.11 (Lappland)"),
-          sliderInput("ewes", "Ær (fjöldi)",
-                      min = 200000, max = 500000, value = 400000, step = 10000),
-          sliderInput("ewe_rate", "Greiðsla á á (€/kind)",
-                      min = 10, max = 40, value = 25, step = 1, pre = "€"),
-          helpText("ESB hámark í tengdum greiðslum: €28/kind."),
-          sliderInput("cattle", "Nautgripir (fjöldi)",
-                      min = 20000, max = 50000, value = 31000, step = 1000),
-          sliderInput("cattle_rate", "Greiðsla á grip (€/grip)",
-                      min = 100, max = 400, value = 200, step = 10, pre = "€"),
-          helpText("Finnland: €150–350 eftir svæði og tegund. Meðaltal ~€200."),
-          hr(),
-          div(class = "sidebar-section", "Harðbýlisgreiðslur (ANC, Pillar 2)"),
-          sliderInput("anc_rate", "ANC greiðsla á hektara (€/ha)",
-                      min = 100, max = 450, value = 250, step = 10, pre = "€"),
-          helpText("Hámark norðan 62°: €450/ha. Finnland meðaltal: ~€217/ha."),
-          sliderInput("eu_cofinance", "ESB-hlutfall af ANC (%)",
-                      min = 30, max = 75, value = 55, step = 5, post = "%"),
-          helpText("Fer eftir þróunarstigi svæðis. Háþróuð ríki: ~40%. Jaðarsvæði: ~55–75%."),
-          hr(),
-          p(class = "source-note",
-            "Höfundur: Rekon / Kári Gautason. Heimildir: LbhÍ Rit 179 (2025), ",
-            "Úttekt AMS/HÍ á aðildarviðræðum (2014), ",
-            "EU Reg. 2021/2115, Wageningen Economic Research, CAP Reform blog, Hagstofa Íslands.")
-        ),
+      div(class = "context-box",
+        HTML(paste0(
+          "<strong>Samþætt líkan</strong><br>",
+          "Þetta líkan tengir saman tollaáhrif og CAP-stuðning. ",
+          "Verðlækkun \u2192 framleiðsluviðbrögð (framboðsteygni) \u2192 ",
+          "nýr fjöldi búfjár og mjólkurframleiðsla \u2192 ",
+          "CAP-greiðslur reiknaðar á leiðréttum grunni.<br><br>",
+          "<em>OECD PSE Íslands: 47%. Verðlag 60% yfir heimsmarkaði.</em>"
+        ))
+      ),
 
-        mainPanel(
-          width = 8,
-          fluidRow(
-            column(3, div(class = "metric-box eu",
-                          div(class = "metric-label", "Núverandi stuðningur"),
-                          uiOutput("metric_current"))),
-            column(3, div(class = "metric-box cap",
-                          div(class = "metric-label", "CAP heildaráætlun"),
-                          uiOutput("metric_cap_total"))),
-            column(3, div(class = "metric-box gap",
-                          div(class = "metric-label", "Munur (gap)"),
-                          uiOutput("metric_gap"))),
-            column(3, div(class = "metric-box rate",
-                          div(class = "metric-label", "Nauðsynlegur €/ha"),
-                          uiOutput("metric_needed_rate")))
-          ),
-          uiOutput("payer_bar_html"),
-          hr(class = "section-divider"),
-          plotOutput("waterfall_chart", height = "420px"),
-          hr(class = "section-divider"),
-          fluidRow(column(12, plotOutput("component_chart", height = "320px"))),
-          hr(class = "section-divider"),
-          h4("Sundurliðun"),
-          uiOutput("detail_table_html"),
-          p(class = "source-note",
-            "Athugasemd: Allar tölur eru áætlaðar á grundvelli bestu þekkingar og fordæma frá Finnlandi. ",
-            "Raunverulegar upphæðir fara eftir samningaviðræðum. ",
-            "Norðurslóðastuðningur (Art. 142) er greiddur af Íslandi, ekki ESB. ",
-            "ANC-greiðslur eru samfjármagnaðar.")
-        )
-      )
+      # ═══════════════════════════════════════
+      # SECTION 1: BASELINE
+      # ═══════════════════════════════════════
+      div(class = "sidebar-section", "\u2460 Grunnstaða Íslands í dag"),
+
+      numericInput("eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
+
+      sliderInput("base_milk_litres", "Mjólkurframleiðsla (M lítr.)",
+                  min = 120, max = 170, value = 145, step = 5, post = " M L"),
+      sliderInput("base_ewes", "Ær (fjöldi)",
+                  min = 200000, max = 500000, value = 400000, step = 10000),
+      sliderInput("base_cattle", "Nautgripir (fjöldi)",
+                  min = 20000, max = 50000, value = 31000, step = 1000),
+      sliderInput("base_egg_val", "Egg/alifuglar — verðmæti (ma.kr.)",
+                  min = 0.5, max = 5, value = 2, step = 0.5, post = " ma.kr."),
+      sliderInput("base_veg_val", "Grænmeti/gróðurhús — verðmæti (ma.kr.)",
+                  min = 1, max = 8, value = 4, step = 0.5, post = " ma.kr."),
+
+      sliderInput("eligible_ha", "Styrkhæft land (ha)",
+                  min = 80000, max = 400000, value = 200000, step = 10000, post = " ha"),
+      helpText("120k ræktað + 80k viðhaldið tún = 200k. Meira ef afréttir."),
+
+      sliderInput("current_support_isk", "Núverandi stuðningur samtals (ma.kr.)",
+                  min = 14, max = 30, value = 18, step = 0.5, post = " ma.kr."),
+      helpText("Búvörusamningar."),
+
+      sliderInput("base_farms", "Fjöldi búa í dag",
+                  min = 1500, max = 4000, value = 2500, step = 100),
+
+      hr(),
+
+      # ═══════════════════════════════════════
+      # SECTION 2: PRICE SHOCK
+      # ═══════════════════════════════════════
+      div(class = "sidebar-section", "\u2461 Verðáhrif tollaafnáms (% lækkun)"),
+      helpText("Byggð á reynslu Finnlands 1995. Hægt að aðlaga."),
+
+      sliderInput("drop_dairy", "Mjólk/mjólkurvörur",
+                  min = 10, max = 50, value = 30, step = 1, post = "%"),
+      helpText("Finnland: \u221228% til \u221232%."),
+
+      sliderInput("drop_lamb", "Kindakjöt",
+                  min = 15, max = 60, value = 45, step = 1, post = "%"),
+      helpText("Finnland kjöt: \u221238–43%. Lamb sennilega hærra (einangrað)."),
+
+      sliderInput("drop_beef", "Nautakjöt",
+                  min = 15, max = 55, value = 40, step = 1, post = "%"),
+      helpText("Finnland: \u221238% til \u221243%."),
+
+      sliderInput("drop_egg", "Egg og alifuglar",
+                  min = 20, max = 70, value = 55, step = 1, post = "%"),
+      helpText("Finnland: \u221265–68%. Ísland líklega lægra v/ flutnkostn."),
+
+      sliderInput("drop_veg", "Grænmeti/gróðurhús",
+                  min = 5, max = 40, value = 20, step = 1, post = "%"),
+      helpText("Gróðurhús m/ jarðvarma: samkeppnishæf. Minni áhrif."),
+
+      hr(),
+
+      # ═══════════════════════════════════════
+      # SECTION 3: SUPPLY ELASTICITIES
+      # ═══════════════════════════════════════
+      div(class = "sidebar-section", "\u2462 Framboðsteygni (supply elasticity)"),
+      helpText("Hversu mikið framleiðsla minnkar þegar verð lækkar. 0.5 = 10% verðlækkun → 5% framleiðsluminnkun."),
+
+      sliderInput("elas_dairy", "Mjólk (langtíma)",
+                  min = 0.1, max = 0.8, value = 0.4, step = 0.05),
+      helpText("Jongeneel & Tonini (2008): 0.3–0.5. Mjólk er tiltölulega óteygin."),
+
+      sliderInput("elas_sheep", "Sauðfé (langtíma)",
+                  min = 0.2, max = 1.0, value = 0.6, step = 0.05),
+      helpText("Revell & Oglethorpe (2003): 0.4–0.7. Auðvelt að skala niður."),
+
+      sliderInput("elas_cattle", "Nautgripir (langtíma)",
+                  min = 0.1, max = 0.8, value = 0.4, step = 0.05),
+      helpText("Tengist mjólkurfrágangi. Svipaðar tölur og mjólk."),
+
+      sliderInput("elas_egg", "Egg/alifuglar",
+                  min = 0.2, max = 1.0, value = 0.7, step = 0.05),
+      helpText("Tiltölulega hár teygni (lítill fastur kostnaður)."),
+
+      sliderInput("elas_veg", "Grænmeti/gróðurhús",
+                  min = 0.1, max = 0.6, value = 0.3, step = 0.05),
+      helpText("Jarðvarmi gefur varanlegri samkeppnisforskot."),
+
+      hr(),
+
+      # ═══════════════════════════════════════
+      # SECTION 4: CAP RATES
+      # ═══════════════════════════════════════
+      div(class = "sidebar-section", "\u2463 CAP-greiðslur (á einingu)"),
+
+      sliderInput("p1_rate", "Stoð 1: Beingreiðslur (€/ha)",
+                  min = 100, max = 400, value = 200, step = 10, pre = "€"),
+      helpText("EU lágmark: €200 (2023), €215 (2027). Meðaltal: ~€243."),
+
+      sliderInput("milk_rate", "Art. 142: Mjólkurgreiðsla (€/lítra)",
+                  min = 0.04, max = 0.15, value = 0.09, step = 0.01, pre = "€"),
+      helpText("Finnland: €0.07 (suður) – €0.11 (Lappland)."),
+
+      sliderInput("ewe_rate", "Art. 142: Greiðsla á á (€/kind)",
+                  min = 10, max = 40, value = 25, step = 1, pre = "€"),
+      helpText("ESB hámark: €28/kind."),
+
+      sliderInput("cattle_rate", "Art. 142: Greiðsla á grip (€/grip)",
+                  min = 100, max = 400, value = 200, step = 10, pre = "€"),
+      helpText("Finnland: €150–350. Meðaltal ~€200."),
+
+      sliderInput("anc_rate", "ANC greiðsla á hektara (€/ha)",
+                  min = 100, max = 450, value = 250, step = 10, pre = "€"),
+      helpText("Hámark norðan 62°: €450/ha. Finnl. meðaltal: ~€217."),
+
+      sliderInput("eu_cofinance", "ESB-hlutfall af ANC (%)",
+                  min = 30, max = 75, value = 55, step = 5, post = "%"),
+
+      hr(),
+
+      # ═══════════════════════════════════════
+      # SECTION 5: STRUCTURAL / CONSUMER
+      # ═══════════════════════════════════════
+      div(class = "sidebar-section", "\u2464 Neytendur og bygg\u00f0ir"),
+
+      sliderInput("land_abandon_factor", "Landnotkun sem helst (%)",
+                  min = 50, max = 100, value = 80, step = 5, post = "%"),
+      helpText("Hluti lands helst í notkun þrátt fyrir fækkun búfjár (ANC hvetur)."),
+
+      sliderInput("food_spend", "Matarútgjöld heimila (ma.kr./ár)",
+                  min = 100, max = 250, value = 170, step = 10, post = " ma.kr."),
+      sliderInput("consumer_price_drop", "Áætluð matvælaverðlækkun (%)",
+                  min = 5, max = 30, value = 15, step = 1, post = "%"),
+      helpText("Finnland: \u221211%. Ísland líklega meira (48% yfir ESB-meðaltali)."),
+
+      sliderInput("transition_years", "Aðlögunartímabil (ár)",
+                  min = 3, max = 15, value = 10, step = 1, post = " ár"),
+      helpText("Finnland fékk 5 ár. Smærri ríki fá oft lengri aðlögun."),
+
+      hr(),
+      p(class = "source-note",
+        "Höfundur: Rekon / Kári Gautason. Heimildir: OECD Agricultural Policy Monitoring (2025), ",
+        "Kola, Hofreither & Rabinowicz (2000), Niemi (2003), ",
+        "Jongeneel & Tonini (2008), Revell & Oglethorpe (2003), ",
+        "EU Evaluation of Nordic Aid (2007), Eurostat (2024), ",
+        "Hagstofa Íslands, LbhÍ Rit 179 (2025).")
     ),
 
-    # ════════════════════════════════════════════════════════════
-    # TAB 2: TARIFF IMPACT
-    # ════════════════════════════════════════════════════════════
-    tabPanel("Áhrif tollaafnáms",
-      sidebarLayout(
-        sidebarPanel(
-          width = 4,
+    # ═══════════════════════════════════════════════════════════════
+    # MAIN PANEL
+    # ═══════════════════════════════════════════════════════════════
+    mainPanel(
+      width = 8,
 
-          div(class = "context-box",
-            HTML("<strong>Hvað gerist þegar tollar falla?</strong><br>
-            Ísland hefur næsthæstu landbúnaðartolla í OECD (OECD PSE: 47%).
-            Verðlag til bænda er ~60% yfir heimsmarkaðsverði.
-            Hér er hægt að skoða áhrifin ef Ísland gengi í ESB og tækju upp
-            sameiginlega landbúnaðarstefnuna (CAP), byggð á reynslu Finnlands
-            og Svíþjóðar 1995.")
-          ),
+      # ── HEADLINE METRICS ──
+      fluidRow(
+        column(3, div(class = "metric-box sky",
+          div(class = "metric-label", "Núverandi stuðningur"),
+          uiOutput("m_current"))),
+        column(3, div(class = "metric-box red",
+          div(class = "metric-label", "Tekjutap (verðáhrif)"),
+          uiOutput("m_revenue_loss"))),
+        column(3, div(class = "metric-box green",
+          div(class = "metric-label", "CAP stuðningur (nýr)"),
+          uiOutput("m_cap_adjusted"))),
+        column(3, div(class = "metric-box basalt",
+          div(class = "metric-label", "Nettóstaða"),
+          uiOutput("m_net")))
+      ),
 
-          div(class = "sidebar-section", "Framleiðsluverðmæti Íslands (ma.kr.)"),
-          helpText("Áætlað heildarframleiðsluverðmæti á núverandi innlendu verði."),
+      # ── SECONDARY METRICS ──
+      fluidRow(
+        column(3, div(class = "metric-box moss",
+          div(class = "metric-label", "Sparnaður neytenda"),
+          uiOutput("m_consumer"))),
+        column(3, div(class = "metric-box gold",
+          div(class = "metric-label", "Leiðrétt land (ha)"),
+          uiOutput("m_adj_ha"))),
+        column(3, div(class = "metric-box basalt",
+          div(class = "metric-label", "Bú eftir aðlögun"),
+          uiOutput("m_farms"))),
+        column(3, div(class = "metric-box sky",
+          div(class = "metric-label", "Hver borgar CAP"),
+          uiOutput("m_payer")))
+      ),
 
-          sliderInput("t_dairy_val", "Mjólkurvörur",
-                      min = 10, max = 30, value = 19, step = 0.5, post = " ma.kr."),
-          sliderInput("t_lamb_val", "Kindakjöt",
-                      min = 3, max = 15, value = 7, step = 0.5, post = " ma.kr."),
-          sliderInput("t_beef_val", "Nautakjöt",
-                      min = 1, max = 8, value = 3, step = 0.5, post = " ma.kr."),
-          sliderInput("t_egg_val", "Egg og alifuglar",
-                      min = 0.5, max = 5, value = 2, step = 0.5, post = " ma.kr."),
-          sliderInput("t_veg_val", "Grænmeti og gróðurhús",
-                      min = 1, max = 8, value = 4, step = 0.5, post = " ma.kr."),
+      # ── MODEL FLOW DIAGRAM ──
+      div(class = "flow-arrow", HTML(
+        "\u2460 Grunnstaða &nbsp;\u2192&nbsp; \u2461 Verðsokk &nbsp;\u2192&nbsp; \u2462 Framleiðslubreyting &nbsp;\u2192&nbsp; \u2463 CAP á nýjum grunni &nbsp;\u2192&nbsp; \u2464 Nettó"
+      )),
 
-          hr(),
-          div(class = "sidebar-section", "Verðlækkun til framleiðenda (%)"),
-          helpText("Byggð á reynslu Finnlands 1995. Hægt að aðlaga."),
+      hr(class = "section-divider"),
 
-          sliderInput("t_dairy_drop", "Mjólk — verðlækkun",
-                      min = 10, max = 50, value = 30, step = 1, post = "%"),
-          helpText("Finnland: −28% til −32%."),
-          sliderInput("t_lamb_drop", "Kindakjöt — verðlækkun",
-                      min = 15, max = 60, value = 45, step = 1, post = "%"),
-          helpText("Finnland nautakjöt: −38% til −43%. Lambakjöt líklega hærra."),
-          sliderInput("t_beef_drop", "Nautakjöt — verðlækkun",
-                      min = 15, max = 55, value = 40, step = 1, post = "%"),
-          sliderInput("t_egg_drop", "Egg/alifuglar — verðlækkun",
-                      min = 20, max = 70, value = 55, step = 1, post = "%"),
-          helpText("Finnland egg: −65% til −68%. Ísland líkl. lægra v/ flutnkostn."),
-          sliderInput("t_veg_drop", "Grænmeti — verðlækkun",
-                      min = 5, max = 40, value = 20, step = 1, post = "%"),
-          helpText("Hluti ræktar í gróðurhúsum m/ jarðvarma. Minni samkeppnisáhrif."),
+      # ════════════════════════════════════════
+      # SECTION A: PRODUCTION ADJUSTMENT
+      # ════════════════════════════════════════
+      div(class = "section-title", "\u2461\u2192\u2462 Framleiðsluviðbrögð: Verðsokk og framboðsteygni"),
 
-          hr(),
-          div(class = "sidebar-section", "Neytendaáhrif og búskapur"),
+      fluidRow(
+        column(6, plotOutput("chart_production_shift", height = "400px")),
+        column(6, plotOutput("chart_livestock_before_after", height = "400px"))
+      ),
 
-          sliderInput("t_food_spend", "Matarútgjöld heimila (ma.kr./ár)",
-                      min = 100, max = 250, value = 170, step = 10, post = " ma.kr."),
-          helpText("Hagstofa: ~170 ma.kr. Matvælaverð á Íslandi 48% yfir ESB-meðaltali."),
+      hr(class = "section-divider"),
 
-          sliderInput("t_consumer_drop", "Áætluð matvælaverðlækkun (%)",
-                      min = 5, max = 30, value = 15, step = 1, post = "%"),
-          helpText("Finnland: −11%. Ísland líklega meira (stærri tollgat)."),
+      # ════════════════════════════════════════
+      # SECTION B: CAP ON ADJUSTED BASE
+      # ════════════════════════════════════════
+      div(class = "section-title", "\u2463 CAP-stuðningur á leiðréttum framleiðslugrunni"),
 
-          sliderInput("t_farms_now", "Fjöldi búa í dag",
-                      min = 1500, max = 4000, value = 2500, step = 100),
-          sliderInput("t_farm_exit_10y", "Bústöðvun á 10 árum (%)",
-                      min = 10, max = 60, value = 35, step = 1, post = "%"),
-          helpText("Finnland: −38% á 17 árum. Mjólkurbú: −82% á 24 árum."),
+      plotOutput("chart_cap_waterfall", height = "400px"),
 
-          numericInput("t_eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
+      # ── Who pays bar ──
+      uiOutput("payer_bar_html"),
 
-          hr(),
-          p(class = "source-note",
-            "Heimildir: OECD Agricultural Policy Monitoring (2025), ",
-            "Kola, Hofreither & Rabinowicz (2000), ",
-            "Niemi (2003) — Static Welfare Effects, ",
-            "EU Evaluation of Nordic Aid Schemes (2007), ",
-            "Eurostat Comparative Price Levels (2024), ",
-            "Hagstofa Íslands, USDA Iceland Tariff Review.")
-        ),
+      hr(class = "section-divider"),
 
-        mainPanel(
-          width = 8,
+      # ════════════════════════════════════════
+      # SECTION C: NET IMPACT
+      # ════════════════════════════════════════
+      div(class = "section-title", "\u2464 Heildarmynd: Tap, stuðningur og nettóstaða"),
 
-          # ── Headline metrics ──
-          fluidRow(
-            column(3, div(class = "metric-box loss",
-                          div(class = "metric-label", "Tekjutap bænda"),
-                          uiOutput("t_metric_loss"))),
-            column(3, div(class = "metric-box gain",
-                          div(class = "metric-label", "Sparnaður neytenda"),
-                          uiOutput("t_metric_consumer"))),
-            column(3, div(class = "metric-box farm",
-                          div(class = "metric-label", "Bú sem hætta"),
-                          uiOutput("t_metric_farms"))),
-            column(3, div(class = "metric-box eu",
-                          div(class = "metric-label", "Tekjutap sem % af CAP"),
-                          uiOutput("t_metric_cap_cover")))
-          ),
+      fluidRow(
+        column(6, plotOutput("chart_net_balance", height = "380px")),
+        column(6, plotOutput("chart_farm_trajectory", height = "380px"))
+      ),
 
-          hr(class = "section-divider"),
+      hr(class = "section-divider"),
 
-          # ── Before/after price impact by sector ──
-          plotOutput("t_price_impact_chart", height = "380px"),
+      # ════════════════════════════════════════
+      # SECTION D: DETAILED TABLE
+      # ════════════════════════════════════════
+      div(class = "section-title", "Sundurliðun — Samanburður fyrir og eftir aðild"),
 
-          hr(class = "section-divider"),
+      uiOutput("detail_table_html"),
 
-          # ── Revenue loss waterfall ──
-          plotOutput("t_revenue_waterfall", height = "380px"),
+      hr(class = "section-divider"),
 
-          hr(class = "section-divider"),
+      # ════════════════════════════════════════
+      # SECTION E: WINNERS / LOSERS
+      # ════════════════════════════════════════
+      div(class = "section-title", "Hver hagnast? Hver tapar?"),
 
-          # ── Balance: loss vs. CAP compensation ──
-          fluidRow(
-            column(6, plotOutput("t_balance_chart", height = "340px")),
-            column(6, plotOutput("t_farm_projection", height = "340px"))
-          ),
+      uiOutput("winners_table_html"),
 
-          hr(class = "section-divider"),
-
-          # ── Winners and losers summary ──
-          h4("Ávinningur og kostnaður — Hver hagnast?"),
-          uiOutput("t_winners_table"),
-
-          p(class = "source-note",
-            "Athugasemd: Þetta líkan er einfaldað. Raunveruleg áhrif fara eftir aðlögunartíma, ",
-            "sérákvæðum í aðildarsamningi og viðbrögðum framleiðenda. ",
-            "Finnland fékk 5 ára aðlögunartímabil. ",
-            "Verðlækkanir miðast við afnám tollaverndar og samkeppni á innri markaðnum.")
-        )
-      )
+      p(class = "source-note",
+        "Athugasemd: Líkanið er einfaldað og byggir á stöðukomfræði (comparative statics). ",
+        "Raunveruleg áhrif fara eftir aðlögunartíma, sérákvæðum í samningi, ",
+        "og viðbrögðum framleiðenda. Framboðsteygni miðast við langtímaviðbrögð (5–10 ár). ",
+        "Neytendaáhrif geta verið hraðari. ",
+        "Finnland fékk 5 ára aðlögunartímabil og sérstakan stuðningspakka.")
     )
-  ) # end tabsetPanel
+  )
 )
 
 # ══════════════════════════════════════════════════════════════════
@@ -394,531 +427,696 @@ ui <- fluidPage(
 server <- function(input, output, session) {
 
   # ────────────────────────────────────────────────────────────────
-  # TAB 1: CAP SUPPORT — REACTIVE CALCULATIONS
+  # CORE MODEL: Everything flows from here
   # ────────────────────────────────────────────────────────────────
 
-  calcs <- reactive({
-    current_eur <- input$current_support_isk * 1000 / input$eur_isk
-    p1 <- input$eligible_ha * input$p1_rate / 1e6
-    milk  <- input$milk_litres * 1e6 * input$milk_rate / 1e6
-    sheep <- input$ewes * input$ewe_rate / 1e6
-    cows  <- input$cattle * input$cattle_rate / 1e6
-    nordic <- milk + sheep + cows
-    anc_total  <- input$eligible_ha * input$anc_rate / 1e6
-    anc_eu     <- anc_total * input$eu_cofinance / 100
-    anc_is     <- anc_total * (1 - input$eu_cofinance / 100)
-    total <- p1 + nordic + anc_total
-    gap   <- current_eur - total
-    eu_pays      <- p1 + anc_eu
-    iceland_pays <- nordic + anc_is
-    needed_rate <- current_eur * 1e6 / input$eligible_ha
-    list(
-      current_eur = current_eur,
-      p1 = p1, milk = milk, sheep = sheep, cows = cows,
-      nordic = nordic,
-      anc_total = anc_total, anc_eu = anc_eu, anc_is = anc_is,
-      total = total, gap = gap,
-      eu_pays = eu_pays, iceland_pays = iceland_pays,
-      needed_rate = needed_rate
-    )
-  })
+  model <- reactive({
+    fx <- input$eur_isk
+    current_support_eur <- input$current_support_isk * 1000 / fx  # €M
 
-  # ── Tab 1: Metric boxes ──
+    # ── BASELINE (before accession) ──
+    # Estimate sector revenue at current protected ISK prices
+    # Milk: ~19 ma.kr based on 145M L at ~130 ISK/L
+    milk_price_isk_per_L <- 131   # avg farm-gate ISK/L (Hagstofa)
+    dairy_val_isk <- input$base_milk_litres * milk_price_isk_per_L / 1000  # ma.kr.
 
-  output$metric_current <- renderUI({
-    c <- calcs()
-    div(class = "metric-value", sprintf("\u20ac%.0fM", c$current_eur))
-  })
+    lamb_price_isk_per_kg <- 1100  # ~ISK/kg carcass weight
+    avg_carcass_kg <- 18
+    lamb_val_isk <- input$base_ewes * avg_carcass_kg * lamb_price_isk_per_kg / 1e9  # ma.kr. (not all ewes slaughtered, ~60% lambs)
+    # Simpler: use ~17 ISK per ewe as total revenue proxy
+    lamb_val_isk <- input$base_ewes * 17500 / 1e6  # ma.kr.
 
-  output$metric_cap_total <- renderUI({
-    c <- calcs()
-    col <- if (c$total >= c$current_eur) col_green else col_red
-    div(class = "metric-value", style = paste0("color:", col), sprintf("\u20ac%.0fM", c$total))
-  })
+    beef_price_isk_per_kg <- 1400
+    avg_beef_yield_kg <- 280
+    # ~10% of cattle herd slaughtered/year, plus dairy bull calves
+    beef_val_isk <- input$base_cattle * 0.35 * avg_beef_yield_kg * beef_price_isk_per_kg / 1e9 * 1000 # ma.kr.
+    beef_val_isk <- input$base_cattle * 100000 / 1e6  # simplified: ~100k ISK revenue per head
 
-  output$metric_gap <- renderUI({
-    c <- calcs()
-    if (c$gap > 0) {
-      tagList(
-        div(class = "metric-value", style = paste0("color:", col_red), sprintf("\u2212\u20ac%.0fM", c$gap)),
-        div(class = "metric-sub", sprintf("%.0f%% vantar", c$gap / c$current_eur * 100))
-      )
-    } else {
-      div(class = "metric-value", style = paste0("color:", col_green), sprintf("+\u20ac%.0fM", abs(c$gap)))
-    }
-  })
+    egg_val_isk <- input$base_egg_val
+    veg_val_isk <- input$base_veg_val
 
-  output$metric_needed_rate <- renderUI({
-    c <- calcs()
-    div(
-      div(class = "metric-value", sprintf("\u20ac%.0f/ha", c$needed_rate)),
-      div(class = "metric-sub", style = paste0("color:", col_grey), "til a\u00f0 jafna n\u00faverandi")
-    )
-  })
-
-  # ── Tab 1: Payer stacked bar ──
-
-  output$payer_bar_html <- renderUI({
-    c <- calcs()
-    total <- c$eu_pays + c$iceland_pays
-    eu_pct <- round(c$eu_pays / total * 100)
-    is_pct <- 100 - eu_pct
-    HTML(sprintf('
-      <div style="margin:18px 0 8px 0; font-family:Montserrat,sans-serif;">
-        <div style="font-size:13px;font-weight:600;color:%s;margin-bottom:8px;">
-          Hver borgar? &mdash; ESB: \u20ac%.0fM (%s%%) &nbsp;|&nbsp; \u00cdsland: \u20ac%.0fM (%s%%)
-        </div>
-        <div style="display:flex;height:32px;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
-            ESB \u20ac%.0fM
-          </div>
-          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
-            \u00cdsland \u20ac%.0fM
-          </div>
-        </div>
-      </div>',
-      col_brown,
-      c$eu_pays, eu_pct, c$iceland_pays, is_pct,
-      eu_pct, col_p1, c$eu_pays,
-      is_pct, col_accent, c$iceland_pays
-    ))
-  })
-
-  # ── Tab 1: Waterfall chart ──
-
-  output$waterfall_chart <- renderPlot({
-    c <- calcs()
-    df <- data.frame(
-      label = factor(c("Sto\u00f0 1\nBeingrei\u00f0slur", "Art. 142\nNor\u00f0ursl\u00f3\u00f0ir",
-                       "Sto\u00f0 2\nHar\u00f0b\u00fdli (ANC)", "CAP samtals", "Munur (gap)"),
-                     levels = c("Sto\u00f0 1\nBeingrei\u00f0slur", "Art. 142\nNor\u00f0ursl\u00f3\u00f0ir",
-                                "Sto\u00f0 2\nHar\u00f0b\u00fdli (ANC)", "CAP samtals", "Munur (gap)")),
-      fill  = c(col_p1, col_nordic, col_anc, col_accent, col_gap),
-      ymin  = c(0, c$p1, c$p1 + c$nordic, 0, c$total),
-      ymax  = c(c$p1, c$p1 + c$nordic, c$total, c$total, c$total + max(c$gap, 0))
-    )
-    ggplot(df, aes(x = label)) +
-      geom_rect(aes(xmin = as.numeric(label) - 0.35, xmax = as.numeric(label) + 0.35,
-                    ymin = ymin, ymax = ymax, fill = fill), colour = NA) +
-      geom_hline(yintercept = c$current_eur, linetype = "dashed", colour = col_brown, linewidth = 0.7) +
-      annotate("text", x = 5.4, y = c$current_eur + 3,
-               label = sprintf("N\u00faverandi: \u20ac%.0fM", c$current_eur),
-               hjust = 1, size = 3.5, colour = col_brown, fontface = "bold", family = "Montserrat") +
-      geom_text(aes(y = (ymin + ymax) / 2, label = sprintf("\u20ac%.0fM", ymax - ymin)),
-                size = 3.8, colour = "white", fontface = "bold", family = "Montserrat") +
-      scale_fill_identity() +
-      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"), expand = expansion(mult = c(0, 0.08))) +
-      coord_cartesian(ylim = c(0, max(c$current_eur, c$total + c$gap) * 1.12)) +
-      labs(title = "CAP stu\u00f0nings\u00e1\u00e6tlun fyrir \u00cdsland",
-           subtitle = sprintf("Samtals \u20ac%.0fM vs. n\u00faverandi \u20ac%.0fM  |  Eligible area: %s ha  |  EUR/ISK: %s",
-                              c$total, c$current_eur, format(input$eligible_ha, big.mark = "."), input$eur_isk),
-           x = NULL, y = NULL) +
-      rekon_theme() +
-      theme(axis.text.x = element_text(size = 10, lineheight = 1.1))
-  }, res = 110, bg = "transparent")
-
-  # ── Tab 1: Component chart ──
-
-  output$component_chart <- renderPlot({
-    c <- calcs()
-    df <- data.frame(
-      component = factor(
-        c("Beingrei\u00f0slur (Sto\u00f0 1)", "Mj\u00f3lk", "Sau\u00f0f\u00e9", "Nautgripir", "ANC (Sto\u00f0 2)"),
-        levels = rev(c("Beingrei\u00f0slur (Sto\u00f0 1)", "Mj\u00f3lk", "Sau\u00f0f\u00e9", "Nautgripir", "ANC (Sto\u00f0 2)"))
-      ),
-      value = c(c$p1, c$milk, c$sheep, c$cows, c$anc_total),
-      fill = c(col_p1, col_nordic, col_nordic, col_nordic, col_anc)
-    )
-    ggplot(df, aes(x = component, y = value, fill = fill)) +
-      geom_col(width = 0.6) +
-      geom_text(aes(label = sprintf("\u20ac%.1fM", value)), hjust = -0.15, size = 3.8,
-                colour = col_brown, fontface = "bold", family = "Montserrat") +
-      scale_fill_identity() +
-      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"), expand = expansion(mult = c(0, 0.2))) +
-      coord_flip() +
-      labs(title = "Sundurli\u00f0un eftir grei\u00f0slulei\u00f0um",
-           subtitle = "Bl\u00e1tt = Sto\u00f0 1 (ESB)  |  Gr\u00e6nt = Art. 142 (\u00cdsland)  |  Gult = ANC (samf.)",
-           x = NULL, y = NULL) +
-      rekon_theme() +
-      theme(
-        plot.title = element_text(face = "bold", colour = col_brown, size = 14),
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_text(size = 11)
-      )
-  }, res = 110, bg = "transparent")
-
-  # ── Tab 1: Detail table ──
-
-  output$detail_table_html <- renderUI({
-    c <- calcs()
-    badge <- function(label, color) {
-      sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
-    }
-    badge_eu <- badge("ESB", col_p1)
-    badge_is <- badge("\u00cdsland", col_accent)
-    badge_both <- badge("Samfj\u00e1rm\u00f6gnun", col_anc)
-
-    rows <- list(
-      list("Sto\u00f0 1: Beingrei\u00f0slur", sprintf("\u20ac%.1fM", c$p1), badge_eu, TRUE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$p1_rate), "", "", FALSE),
-      list("", "", "", FALSE),
-      list("Art. 142: Nor\u00f0ursl\u00f3\u00f0astu\u00f0ningur", sprintf("\u20ac%.1fM", c$nordic), badge_is, TRUE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;Mj\u00f3lk: %.0fM L \u00d7 \u20ac%.2f/L", input$milk_litres, input$milk_rate), sprintf("\u20ac%.1fM", c$milk), badge_is, FALSE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;Sau\u00f0f\u00e9: %s \u00e6r \u00d7 \u20ac%s/kind", format(input$ewes, big.mark = "."), input$ewe_rate), sprintf("\u20ac%.1fM", c$sheep), badge_is, FALSE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;Nautgripir: %s \u00d7 \u20ac%s/grip", format(input$cattle, big.mark = "."), input$cattle_rate), sprintf("\u20ac%.1fM", c$cows), badge_is, FALSE),
-      list("", "", "", FALSE),
-      list("Sto\u00f0 2: Har\u00f0b\u00fdlisgrei\u00f0slur (ANC)", sprintf("\u20ac%.1fM", c$anc_total), badge_both, TRUE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;%s ha \u00d7 \u20ac%s/ha", format(input$eligible_ha, big.mark = "."), input$anc_rate), "", "", FALSE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;\u00dear af ESB (%s%%)", input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_eu), badge_eu, FALSE),
-      list(sprintf("&nbsp;&nbsp;&nbsp;\u00dear af \u00cdsland (%s%%)", 100 - input$eu_cofinance), sprintf("\u20ac%.1fM", c$anc_is), badge_is, FALSE)
-    )
-
-    row_html <- sapply(rows, function(r) {
-      bg <- if (r[[4]]) sprintf(' style="background:%s;font-weight:600;"', col_cloud) else ""
-      sprintf("<tr%s><td style='padding:7px 12px;font-family:Lora,serif;'>%s</td><td style='padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;font-weight:600;'>%s</td><td style='padding:7px 12px;text-align:center;'>%s</td></tr>",
-              bg, r[[1]], r[[2]], r[[3]])
-    })
-
-    gap_color <- if (c$gap > 0) col_red else col_green
-    gap_sign <- if (c$gap > 0) sprintf("\u2212\u20ac%.1fM", c$gap) else sprintf("+\u20ac%.1fM", abs(c$gap))
-
-    summary_rows <- sprintf('
-      <tr style="border-top:2px solid %s;background:%s;font-weight:700;">
-        <td style="padding:10px 12px;font-family:Montserrat,sans-serif;">SAMTALS CAP</td>
-        <td style="padding:10px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
-        <td style="padding:10px 12px;text-align:center;">%s &nbsp; %s</td>
-      </tr>
-      <tr style="font-weight:600;">
-        <td style="padding:7px 12px;font-family:Lora,serif;">N\u00faverandi stu\u00f0ningur</td>
-        <td style="padding:7px 12px;text-align:right;font-family:Montserrat,sans-serif;">\u20ac%.1fM</td>
-        <td style="padding:7px 12px;text-align:center;">%s</td>
-      </tr>
-      <tr style="border-top:2px solid %s;font-weight:700;">
-        <td style="padding:10px 12px;color:%s;font-family:Montserrat,sans-serif;">MUNUR</td>
-        <td style="padding:10px 12px;text-align:right;color:%s;font-family:Montserrat,sans-serif;font-size:15px;">%s</td>
-        <td></td>
-      </tr>',
-      col_brown, col_cloud,
-      c$total, badge_eu, badge_is,
-      c$current_eur, badge_is,
-      gap_color, gap_color, gap_color, gap_sign
-    )
-
-    HTML(paste0(
-      '<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">',
-      '<thead><tr style="border-bottom:2px solid ', col_brown, ';background:', col_cloud, ';">',
-      '<th style="padding:8px 12px;text-align:left;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;">Li\u00f0ur</th>',
-      '<th style="padding:8px 12px;text-align:right;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;">\u20acM/\u00e1ri</th>',
-      '<th style="padding:8px 12px;text-align:center;font-family:Montserrat,sans-serif;font-size:12px;color:', col_grey, ';text-transform:uppercase;">Grei\u00f0andi</th>',
-      '</tr></thead><tbody>',
-      paste(row_html, collapse = ""),
-      summary_rows,
-      '</tbody></table>'
-    ))
-  })
-
-  # ────────────────────────────────────────────────────────────────
-  # TAB 2: TARIFF IMPACT — REACTIVE CALCULATIONS
-  # ────────────────────────────────────────────────────────────────
-
-  tariff <- reactive({
-    # Sector data: value (ISK bn), drop (%), convert to EUR M
-    fx <- input$t_eur_isk
     sectors <- data.frame(
-      sector = c("Mj\u00f3lkurv\u00f6rur", "Kindakj\u00f6t", "Nautakj\u00f6t", "Egg/alifuglar", "Gr\u00e6nmeti"),
-      value_isk = c(input$t_dairy_val, input$t_lamb_val, input$t_beef_val,
-                    input$t_egg_val, input$t_veg_val),
-      drop_pct = c(input$t_dairy_drop, input$t_lamb_drop, input$t_beef_drop,
-                   input$t_egg_drop, input$t_veg_drop),
+      sector = c("Mjólk", "Kindakjöt", "Nautakjöt", "Egg/alifuglar", "Grænmeti"),
+      sector_short = c("Mjólk", "Lamb", "Naut", "Egg", "Græn"),
+      val_isk = c(dairy_val_isk, lamb_val_isk, beef_val_isk, egg_val_isk, veg_val_isk),
+      drop_pct = c(input$drop_dairy, input$drop_lamb, input$drop_beef,
+                   input$drop_egg, input$drop_veg),
+      elasticity = c(input$elas_dairy, input$elas_sheep, input$elas_cattle,
+                     input$elas_egg, input$elas_veg),
       stringsAsFactors = FALSE
     )
-    sectors$value_eur <- sectors$value_isk * 1000 / fx  # €M
-    sectors$loss_eur  <- sectors$value_eur * sectors$drop_pct / 100
-    sectors$after_eur <- sectors$value_eur - sectors$loss_eur
 
-    total_loss_eur <- sum(sectors$loss_eur)
-    total_before   <- sum(sectors$value_eur)
-    total_after    <- sum(sectors$after_eur)
+    sectors$val_eur <- sectors$val_isk * 1000 / fx
 
-    # Consumer savings
-    consumer_save_isk <- input$t_food_spend * input$t_consumer_drop / 100
+    # ── SUPPLY RESPONSE ──
+    # Production change = -drop% × elasticity
+    # E.g., 30% price drop × 0.4 elasticity = 12% production decline
+    sectors$prod_change_pct <- -sectors$drop_pct * sectors$elasticity / 100
+    sectors$prod_multiplier <- 1 + sectors$prod_change_pct
+
+    # Revenue after = volume × (1 + prod_change) × price × (1 - drop)
+    sectors$revenue_after_eur <- sectors$val_eur * sectors$prod_multiplier * (1 - sectors$drop_pct / 100)
+    sectors$revenue_loss_eur  <- sectors$val_eur - sectors$revenue_after_eur
+
+    total_before_eur <- sum(sectors$val_eur)
+    total_after_eur  <- sum(sectors$revenue_after_eur)
+    total_loss_eur   <- sum(sectors$revenue_loss_eur)
+
+    # ── ADJUSTED PRODUCTION VOLUMES ──
+    adj_milk   <- input$base_milk_litres * (1 + sectors$prod_change_pct[1])
+    adj_ewes   <- round(input$base_ewes * (1 + sectors$prod_change_pct[2]))
+    adj_cattle <- round(input$base_cattle * (1 + sectors$prod_change_pct[3]))
+
+    # Land: partially abandons, but ANC incentivizes keeping land
+    livestock_decline_avg <- mean(c(
+      sectors$prod_change_pct[1],
+      sectors$prod_change_pct[2],
+      sectors$prod_change_pct[3]
+    ))
+    land_retention <- input$land_abandon_factor / 100
+    adj_ha <- round(input$eligible_ha * (1 + livestock_decline_avg * (1 - land_retention)))
+
+    # ── CAP PAYMENTS ON ADJUSTED BASE ──
+    # Pillar 1: based on adjusted land
+    p1 <- adj_ha * input$p1_rate / 1e6
+
+    # Nordic Aid (Art. 142): based on adjusted production
+    nordic_milk  <- adj_milk * 1e6 * input$milk_rate / 1e6
+    nordic_sheep <- adj_ewes * input$ewe_rate / 1e6
+    nordic_cows  <- adj_cattle * input$cattle_rate / 1e6
+    nordic_total <- nordic_milk + nordic_sheep + nordic_cows
+
+    # ANC: based on adjusted land
+    anc_total <- adj_ha * input$anc_rate / 1e6
+    anc_eu    <- anc_total * input$eu_cofinance / 100
+    anc_is    <- anc_total * (1 - input$eu_cofinance / 100)
+
+    cap_total <- p1 + nordic_total + anc_total
+
+    # Who pays
+    eu_pays      <- p1 + anc_eu
+    iceland_pays <- nordic_total + anc_is
+
+    # ── WHAT IF NO DECLINE (for comparison) ──
+    p1_max         <- input$eligible_ha * input$p1_rate / 1e6
+    nordic_max     <- (input$base_milk_litres * 1e6 * input$milk_rate +
+                       input$base_ewes * input$ewe_rate +
+                       input$base_cattle * input$cattle_rate) / 1e6
+    anc_max        <- input$eligible_ha * input$anc_rate / 1e6
+    cap_max        <- p1_max + nordic_max + anc_max
+
+    # ── NET IMPACT ──
+    net_farmer <- cap_total - total_loss_eur
+    cap_covers_pct <- cap_total / total_loss_eur * 100
+
+    # ── CONSUMER SAVINGS ──
+    consumer_save_isk <- input$food_spend * input$consumer_price_drop / 100
     consumer_save_eur <- consumer_save_isk * 1000 / fx
 
-    # Farm projection (exponential decline over 10 years)
-    farms_after <- round(input$t_farms_now * (1 - input$t_farm_exit_10y / 100))
-    farms_lost  <- input$t_farms_now - farms_after
-    annual_exit <- 1 - (1 - input$t_farm_exit_10y / 100)^(1/10)
+    # ── FARM TRAJECTORY ──
+    # Farm exits driven by: revenue loss not covered by CAP
+    # Use weighted sector decline as proxy for farm exit
+    farm_exit_rate <- -livestock_decline_avg  # base annual-ish
+    # Scale: if CAP covers a lot, fewer farms exit
+    coverage_dampener <- min(1, max(0.3, 1 - cap_covers_pct / 200))
+    effective_annual_exit <- farm_exit_rate * coverage_dampener
+    # Clamp to reasonable range
+    effective_annual_exit <- max(0.01, min(0.08, effective_annual_exit))
 
-    # Farm trajectory: year 0 to 15
     years <- 0:15
     farm_trajectory <- data.frame(
       year = years,
-      farms = round(input$t_farms_now * (1 - annual_exit)^years)
+      farms = round(input$base_farms * (1 - effective_annual_exit)^years)
     )
+    farms_after <- farm_trajectory$farms[farm_trajectory$year == input$transition_years]
 
     list(
+      fx = fx,
+      current_support_eur = current_support_eur,
       sectors = sectors,
+      total_before_eur = total_before_eur,
+      total_after_eur = total_after_eur,
       total_loss_eur = total_loss_eur,
-      total_before = total_before,
-      total_after = total_after,
-      consumer_save_eur = consumer_save_eur,
-      consumer_save_isk = consumer_save_isk,
-      farms_after = farms_after,
-      farms_lost = farms_lost,
+      adj_milk = adj_milk, adj_ewes = adj_ewes, adj_cattle = adj_cattle,
+      adj_ha = adj_ha,
+      p1 = p1, nordic_milk = nordic_milk, nordic_sheep = nordic_sheep,
+      nordic_cows = nordic_cows, nordic_total = nordic_total,
+      anc_total = anc_total, anc_eu = anc_eu, anc_is = anc_is,
+      cap_total = cap_total, cap_max = cap_max,
+      eu_pays = eu_pays, iceland_pays = iceland_pays,
+      net_farmer = net_farmer, cap_covers_pct = cap_covers_pct,
+      consumer_save_eur = consumer_save_eur, consumer_save_isk = consumer_save_isk,
       farm_trajectory = farm_trajectory,
-      fx = fx
+      farms_after = farms_after,
+      effective_annual_exit = effective_annual_exit
     )
   })
 
-  # ── Tab 2: Metrics ──
+  # ────────────────────────────────────────────────────────────────
+  # METRIC CARDS
+  # ────────────────────────────────────────────────────────────────
 
-  output$t_metric_loss <- renderUI({
-    t <- tariff()
+  output$m_current <- renderUI({
+    m <- model()
+    tagList(
+      div(class = "metric-value", sprintf("\u20ac%.0fM", m$current_support_eur)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("%.0f ma.kr.", input$current_support_isk))
+    )
+  })
+
+  output$m_revenue_loss <- renderUI({
+    m <- model()
     tagList(
       div(class = "metric-value", style = paste0("color:", col_red),
-          sprintf("\u2212\u20ac%.0fM", t$total_loss_eur)),
-      div(class = "metric-sub", sprintf("%.0f%% af framlei\u00f0sluvermi", t$total_loss_eur / t$total_before * 100))
+          sprintf("\u2212\u20ac%.0fM", m$total_loss_eur)),
+      div(class = "metric-sub", style = paste0("color:", col_red),
+          sprintf("%.0f%% af framleiðsluverðmæti", m$total_loss_eur / m$total_before_eur * 100))
     )
   })
 
-  output$t_metric_consumer <- renderUI({
-    t <- tariff()
+  output$m_cap_adjusted <- renderUI({
+    m <- model()
     tagList(
-      div(class = "metric-value", style = paste0("color:", col_moss),
-          sprintf("+\u20ac%.0fM", t$consumer_save_eur)),
-      div(class = "metric-sub", style = paste0("color:", col_moss),
-          sprintf("%.0f ma.kr./\u00e1r l\u00e6gra matarver\u00f0", t$consumer_save_isk))
+      div(class = "metric-value", style = paste0("color:", col_green),
+          sprintf("\u20ac%.0fM", m$cap_total)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("(hefði verið \u20ac%.0fM án samdráttar)", m$cap_max))
     )
   })
 
-  output$t_metric_farms <- renderUI({
-    t <- tariff()
-    tagList(
-      div(class = "metric-value", style = paste0("color:", col_red),
-          sprintf("\u2212%s", format(t$farms_lost, big.mark = "."))),
-      div(class = "metric-sub", sprintf("b\u00fa \u00e1 10 \u00e1rum (%s%% f\u00e6kkun)", input$t_farm_exit_10y))
-    )
-  })
-
-  output$t_metric_cap_cover <- renderUI({
-    t <- tariff()
-    c <- calcs()
-    cover_pct <- c$total / t$total_loss_eur * 100
-    col <- if (cover_pct >= 100) col_green else col_red
+  output$m_net <- renderUI({
+    m <- model()
+    col <- if (m$net_farmer >= 0) col_green else col_red
+    sign <- if (m$net_farmer >= 0) "+" else "\u2212"
     tagList(
       div(class = "metric-value", style = paste0("color:", col),
-          sprintf("%.0f%%", cover_pct)),
-      div(class = "metric-sub", style = paste0("color:", col_grey),
-          sprintf("CAP \u20ac%.0fM vs. tap \u20ac%.0fM", c$total, t$total_loss_eur))
+          sprintf("%s\u20ac%.0fM", sign, abs(m$net_farmer))),
+      div(class = "metric-sub", style = paste0("color:", col),
+          sprintf("CAP dekkar %.0f%% tapsins", m$cap_covers_pct))
     )
   })
 
-  # ── Tab 2: Price impact chart (before/after paired bars) ──
+  output$m_consumer <- renderUI({
+    m <- model()
+    tagList(
+      div(class = "metric-value", style = paste0("color:", col_moss),
+          sprintf("+\u20ac%.0fM", m$consumer_save_eur)),
+      div(class = "metric-sub", style = paste0("color:", col_moss),
+          sprintf("%.0f ma.kr./ár lægra matvælaverð", m$consumer_save_isk))
+    )
+  })
 
-  output$t_price_impact_chart <- renderPlot({
-    t <- tariff()
-    s <- t$sectors
+  output$m_adj_ha <- renderUI({
+    m <- model()
+    change_pct <- (m$adj_ha - input$eligible_ha) / input$eligible_ha * 100
+    tagList(
+      div(class = "metric-value", format(m$adj_ha, big.mark = ".")),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("%.0f%% af upphaflegu (%s ha)", 100 + change_pct, format(input$eligible_ha, big.mark = ".")))
+    )
+  })
+
+  output$m_farms <- renderUI({
+    m <- model()
+    tagList(
+      div(class = "metric-value", style = paste0("color:", col_red),
+          format(m$farms_after, big.mark = ".")),
+      div(class = "metric-sub", style = paste0("color:", col_red),
+          sprintf("\u2212%s bú á %s árum (%.1f%%/ár)",
+                  format(input$base_farms - m$farms_after, big.mark = "."),
+                  input$transition_years,
+                  m$effective_annual_exit * 100))
+    )
+  })
+
+  output$m_payer <- renderUI({
+    m <- model()
+    eu_pct <- round(m$eu_pays / m$cap_total * 100)
+    tagList(
+      div(class = "metric-value", sprintf("%.0f/%.0f", eu_pct, 100 - eu_pct)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("ESB \u20ac%.0fM / Ísland \u20ac%.0fM", m$eu_pays, m$iceland_pays))
+    )
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # CHART: Production shift (before/after by sector)
+  # ────────────────────────────────────────────────────────────────
+
+  output$chart_production_shift <- renderPlot({
+    m <- model()
+    s <- m$sectors
 
     df <- data.frame(
       sector = factor(rep(s$sector, 2), levels = rev(s$sector)),
-      type = rep(c("Fyrir", "Eftir"), each = nrow(s)),
-      value = c(s$value_eur, s$after_eur),
-      stringsAsFactors = FALSE
+      type = factor(rep(c("Fyrir aðild", "Eftir aðild"), each = nrow(s)),
+                    levels = c("Fyrir aðild", "Eftir aðild")),
+      value = c(s$val_eur, s$revenue_after_eur)
     )
-    df$type <- factor(df$type, levels = c("Fyrir", "Eftir"))
 
-    # Loss annotations
     ann <- data.frame(
       sector = factor(s$sector, levels = rev(s$sector)),
-      y_pos = s$value_eur + 2,
-      label = sprintf("\u2212%.0f%%", s$drop_pct)
+      y_pos = s$val_eur,
+      label = sprintf("\u2212%.0f%%\nverð", s$drop_pct),
+      label2 = sprintf("\u2212%.0f%%\nmagn", abs(s$prod_change_pct * 100))
     )
 
     ggplot(df, aes(x = sector, y = value, fill = type)) +
       geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-      geom_text(data = ann, aes(x = sector, y = y_pos, label = label),
-                inherit.aes = FALSE, hjust = -0.1, size = 3.5,
-                colour = col_red, fontface = "bold", family = "Montserrat") +
-      scale_fill_manual(values = c("Fyrir" = col_before, "Eftir" = col_red),
-                        labels = c("N\u00faverandi ver\u00f0", "Eftir tollaafn\u00e1m")) +
-      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
-                         expand = expansion(mult = c(0, 0.15))) +
+      geom_text(data = ann,
+                aes(x = sector, y = y_pos * 1.02, label = label),
+                inherit.aes = FALSE, hjust = -0.1, size = 2.8,
+                colour = col_red, fontface = "bold", family = "Montserrat",
+                lineheight = 0.9) +
+      scale_fill_manual(values = c("Fyrir aðild" = col_before, "Eftir aðild" = col_red)) +
+      scale_y_continuous(labels = function(x) paste0("\u20ac", round(x), "M"),
+                         expand = expansion(mult = c(0, 0.25))) +
       coord_flip() +
-      labs(title = "Ver\u00f0\u00e1hrif \u00e1 framlei\u00f0endur eftir geirum",
-           subtitle = sprintf("Heildar tekjutap: \u20ac%.0fM  |  Gr\u00e1tt = n\u00faverandi  |  Rau\u00f0t = eftir ESB-a\u00f0ild",
-                              t$total_loss_eur),
+      labs(title = "Tekjuáhrif á framleiðendur",
+           subtitle = sprintf("Heildar tekjutap: \u20ac%.0fM (\u2212%.0f%% af framleiðsluverðmæti)",
+                              m$total_loss_eur, m$total_loss_eur / m$total_before_eur * 100),
            x = NULL, y = NULL, fill = NULL) +
       rekon_theme() +
       theme(
-        legend.position = "top",
-        legend.text = element_text(size = 10),
+        legend.position = "top", legend.text = element_text(size = 10),
         panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(colour = "#E5E7EB"),
         axis.text.y = element_text(size = 11)
       )
   }, res = 110, bg = "transparent")
 
-  # ── Tab 2: Revenue loss waterfall ──
+  # ────────────────────────────────────────────────────────────────
+  # CHART: Livestock before/after
+  # ────────────────────────────────────────────────────────────────
 
-  output$t_revenue_waterfall <- renderPlot({
-    t <- tariff()
-    s <- t$sectors
+  output$chart_livestock_before_after <- renderPlot({
+    m <- model()
 
-    labels <- c(s$sector, "Samtals tap")
-    values <- c(s$loss_eur, t$total_loss_eur)
-    fills  <- c(rep(col_red, nrow(s)), col_accent)
+    df <- data.frame(
+      item = factor(rep(c("Mjólk (M L)", "Ær (þús.)", "Nautgr. (þús.)"), 2),
+                    levels = rev(c("Mjólk (M L)", "Ær (þús.)", "Nautgr. (þús.)"))),
+      type = factor(rep(c("Fyrir", "Eftir"), each = 3), levels = c("Fyrir", "Eftir")),
+      value = c(
+        input$base_milk_litres, input$base_ewes / 1000, input$base_cattle / 1000,
+        m$adj_milk, m$adj_ewes / 1000, m$adj_cattle / 1000
+      )
+    )
 
-    # Waterfall positions
-    ymin <- c(rep(0, nrow(s)), 0)
-    ymax <- values
+    changes <- data.frame(
+      item = factor(c("Mjólk (M L)", "Ær (þús.)", "Nautgr. (þús.)"),
+                    levels = rev(c("Mjólk (M L)", "Ær (þús.)", "Nautgr. (þús.)"))),
+      before = c(input$base_milk_litres, input$base_ewes / 1000, input$base_cattle / 1000),
+      after = c(m$adj_milk, m$adj_ewes / 1000, m$adj_cattle / 1000)
+    )
+    changes$pct <- (changes$after - changes$before) / changes$before * 100
+
+    ggplot(df, aes(x = item, y = value, fill = type)) +
+      geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+      geom_text(data = changes,
+                aes(x = item, y = before * 1.02,
+                    label = sprintf("%.0f%%", pct)),
+                inherit.aes = FALSE, hjust = -0.15, size = 3.5,
+                colour = col_red, fontface = "bold", family = "Montserrat") +
+      scale_fill_manual(values = c("Fyrir" = col_basalt, "Eftir" = col_anc)) +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+      coord_flip() +
+      labs(title = "Framleiðslumagn: fyrir og eftir",
+           subtitle = "Leiðrétt f. framboðsteygni (langtíma viðbrögð)",
+           x = NULL, y = NULL, fill = NULL) +
+      rekon_theme() +
+      theme(
+        legend.position = "top", legend.text = element_text(size = 10),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(colour = "#E5E7EB"),
+        axis.text.y = element_text(size = 11)
+      )
+  }, res = 110, bg = "transparent")
+
+  # ────────────────────────────────────────────────────────────────
+  # CHART: CAP waterfall (on adjusted base)
+  # ────────────────────────────────────────────────────────────────
+
+  output$chart_cap_waterfall <- renderPlot({
+    m <- model()
+
+    labels <- c("Stoð 1\nBeingreiðslur",
+                "Art. 142\nMjólk",
+                "Art. 142\nSauðfé",
+                "Art. 142\nNautgripir",
+                "ANC\nHarðbýli",
+                "CAP\nSamtals")
+    vals <- c(m$p1, m$nordic_milk, m$nordic_sheep, m$nordic_cows, m$anc_total, m$cap_total)
+    fills <- c(col_p1, col_nordic, col_nordic, col_nordic, col_anc, col_accent)
+
+    # Waterfall: stack first 5, last is total
+    cumvals <- cumsum(vals[1:5])
+    ymins <- c(0, cumvals[1:4], 0)
+    ymaxs <- c(cumvals, m$cap_total)
 
     df <- data.frame(
       label = factor(labels, levels = labels),
-      ymin = ymin, ymax = ymax, fill = fills
+      ymin = ymins, ymax = ymaxs, fill = fills
     )
 
     ggplot(df, aes(x = label)) +
       geom_rect(aes(xmin = as.numeric(label) - 0.35, xmax = as.numeric(label) + 0.35,
                     ymin = ymin, ymax = ymax, fill = fill), colour = NA) +
+      geom_hline(yintercept = m$current_support_eur, linetype = "dashed",
+                 colour = col_brown, linewidth = 0.7) +
+      annotate("text", x = 6.4, y = m$current_support_eur,
+               label = sprintf("Núverandi: \u20ac%.0fM", m$current_support_eur),
+               hjust = 1, vjust = -0.7, size = 3.3, colour = col_brown,
+               fontface = "bold", family = "Montserrat") +
+      geom_hline(yintercept = m$total_loss_eur, linetype = "dotted",
+                 colour = col_red, linewidth = 0.6) +
+      annotate("text", x = 6.4, y = m$total_loss_eur,
+               label = sprintf("Tekjutap: \u20ac%.0fM", m$total_loss_eur),
+               hjust = 1, vjust = 1.5, size = 3.3, colour = col_red,
+               fontface = "bold", family = "Montserrat") +
       geom_text(aes(y = (ymin + ymax) / 2, label = sprintf("\u20ac%.0fM", ymax - ymin)),
-                size = 3.8, colour = "white", fontface = "bold", family = "Montserrat") +
+                size = 3.5, colour = "white", fontface = "bold", family = "Montserrat") +
       scale_fill_identity() +
       scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
-                         expand = expansion(mult = c(0, 0.1))) +
-      labs(title = "Tekjutap framlei\u00f0enda eftir greinum",
-           subtitle = "Framlei\u00f0sluver\u00f0m\u00e6ti sem tapast vi\u00f0 ver\u00f0l\u00e6kkun",
+                         expand = expansion(mult = c(0, 0.08))) +
+      labs(title = "CAP-stuðningur á leiðréttum framleiðslugrunni",
+           subtitle = sprintf(
+             "Samtals \u20ac%.0fM  |  Leiðrétt land: %s ha  |  Mjólk: %.0fM L  |  Ær: %s  |  Naut: %s",
+             m$cap_total,
+             format(m$adj_ha, big.mark = "."),
+             m$adj_milk,
+             format(m$adj_ewes, big.mark = "."),
+             format(m$adj_cattle, big.mark = ".")
+           ),
            x = NULL, y = NULL) +
       rekon_theme() +
-      theme(axis.text.x = element_text(size = 9, lineheight = 1.1, angle = 15, hjust = 1))
+      theme(axis.text.x = element_text(size = 9, lineheight = 1.1))
   }, res = 110, bg = "transparent")
 
-  # ── Tab 2: Balance chart (loss vs CAP compensation) ──
+  # ── Payer bar ──
 
-  output$t_balance_chart <- renderPlot({
-    t <- tariff()
-    c <- calcs()
+  output$payer_bar_html <- renderUI({
+    m <- model()
+    total <- m$eu_pays + m$iceland_pays
+    eu_pct <- round(m$eu_pays / total * 100)
+    is_pct <- 100 - eu_pct
+    HTML(sprintf('
+      <div style="margin:18px 0 8px 0;font-family:Montserrat,sans-serif;">
+        <div style="font-size:13px;font-weight:600;color:%s;margin-bottom:8px;">
+          Hver borgar? &mdash; ESB: \u20ac%.0fM (%s%%) &nbsp;|&nbsp; Ísland: \u20ac%.0fM (%s%%)
+        </div>
+        <div style="display:flex;height:32px;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            ESB \u20ac%.0fM</div>
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            Ísland \u20ac%.0fM</div>
+        </div>
+      </div>',
+      col_brown,
+      m$eu_pays, eu_pct, m$iceland_pays, is_pct,
+      eu_pct, col_p1, m$eu_pays,
+      is_pct, col_accent, m$iceland_pays
+    ))
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # CHART: Net balance
+  # ────────────────────────────────────────────────────────────────
+
+  output$chart_net_balance <- renderPlot({
+    m <- model()
 
     df <- data.frame(
-      label = factor(c("Tekjutap\nbænda", "CAP\nstu\u00f0ningur", "Nett\u00f3 sta\u00f0a"),
-                     levels = c("Tekjutap\nbænda", "CAP\nstu\u00f0ningur", "Nett\u00f3 sta\u00f0a")),
-      value = c(t$total_loss_eur, c$total, c$total - t$total_loss_eur),
-      fill  = c(col_red, col_green, if (c$total >= t$total_loss_eur) col_moss else col_gap)
+      label = factor(c("Tekjutap\nframleiðenda", "CAP\nstuðningur",
+                       "Nettó\nstaða bænda", "Sparnaður\nneytenda"),
+                     levels = c("Tekjutap\nframleiðenda", "CAP\nstuðningur",
+                                "Nettó\nstaða bænda", "Sparnaður\nneytenda")),
+      value = c(-m$total_loss_eur, m$cap_total, m$net_farmer, m$consumer_save_eur),
+      fill = c(col_red, col_green,
+               if (m$net_farmer >= 0) col_moss else col_gap,
+               col_consumer)
     )
 
     ggplot(df, aes(x = label, y = value, fill = fill)) +
       geom_col(width = 0.55) +
-      geom_hline(yintercept = 0, colour = col_brown, linewidth = 0.5) +
-      geom_text(aes(label = sprintf("\u20ac%.0fM", value),
+      geom_hline(yintercept = 0, colour = col_brown, linewidth = 0.6) +
+      geom_text(aes(label = sprintf("%s\u20ac%.0fM", ifelse(value >= 0, "+", "\u2212"), abs(value)),
                     vjust = ifelse(value >= 0, -0.5, 1.5)),
                 size = 4, fontface = "bold", colour = col_brown, family = "Montserrat") +
       scale_fill_identity() +
       scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
                          expand = expansion(mult = c(0.15, 0.15))) +
-      labs(title = "B\u00e6tur CAP upp tapi\u00f0?",
-           subtitle = sprintf("CAP dekkar %.0f%% af tekjutapinu", c$total / t$total_loss_eur * 100),
+      labs(title = "Heildaráhrif á hagsmunaaðila",
+           subtitle = sprintf("Bændur nettó: %s\u20ac%.0fM  |  Neytendur: +\u20ac%.0fM/ár",
+                              ifelse(m$net_farmer >= 0, "+", "\u2212"),
+                              abs(m$net_farmer), m$consumer_save_eur),
            x = NULL, y = NULL) +
       rekon_theme(base_size = 12) +
       theme(
-        plot.title = element_text(face = "bold", colour = col_brown, size = 14),
-        axis.text.x = element_text(size = 10, lineheight = 1.1)
+        plot.title = element_text(size = 14),
+        axis.text.x = element_text(size = 10, lineheight = 1.1),
+        panel.grid.major.x = element_blank()
       )
   }, res = 110, bg = "transparent")
 
-  # ── Tab 2: Farm projection chart ──
+  # ────────────────────────────────────────────────────────────────
+  # CHART: Farm trajectory
+  # ────────────────────────────────────────────────────────────────
 
-  output$t_farm_projection <- renderPlot({
-    t <- tariff()
-    df <- t$farm_trajectory
+  output$chart_farm_trajectory <- renderPlot({
+    m <- model()
+    df <- m$farm_trajectory
+
+    milestones <- df[df$year %in% c(0, 5, 10, 15), ]
 
     ggplot(df, aes(x = year, y = farms)) +
-      geom_area(fill = col_red, alpha = 0.12) +
+      geom_area(fill = col_red, alpha = 0.10) +
       geom_line(colour = col_red, linewidth = 1.2) +
-      geom_point(data = df[df$year %in% c(0, 5, 10, 15), ],
-                 colour = col_red, size = 3) +
-      geom_text(data = df[df$year %in% c(0, 5, 10, 15), ],
+      geom_point(data = milestones, colour = col_red, size = 3) +
+      geom_text(data = milestones,
                 aes(label = format(farms, big.mark = ".")),
                 vjust = -1.2, size = 3.5, colour = col_brown,
                 fontface = "bold", family = "Montserrat") +
+      geom_vline(xintercept = input$transition_years, linetype = "dashed",
+                 colour = col_basalt, linewidth = 0.5) +
+      annotate("text", x = input$transition_years, y = max(df$farms) * 0.95,
+               label = sprintf("Aðlögun: %s ár", input$transition_years),
+               hjust = -0.1, size = 3, colour = col_basalt, family = "Montserrat") +
       scale_x_continuous(breaks = c(0, 5, 10, 15),
-                         labels = c("Dagur 1", "\u00c1r 5", "\u00c1r 10", "\u00c1r 15")) +
+                         labels = c("Dagur 1", "Ár 5", "Ár 10", "Ár 15")) +
       scale_y_continuous(labels = function(x) format(x, big.mark = "."),
                          expand = expansion(mult = c(0.05, 0.15))) +
-      labs(title = "Sp\u00e1: fj\u00f6ldi b\u00faa eftir a\u00f0ild",
-           subtitle = sprintf("Fr\u00e1 %s \u00ed %s \u00e1 10 \u00e1rum  |  Bygg\u00f0 \u00e1 reynslu Finnlands",
-                              format(input$t_farms_now, big.mark = "."),
-                              format(t$farms_after, big.mark = ".")),
+      labs(title = "Spá: fjöldi búa eftir aðild",
+           subtitle = sprintf("Fækkunarhraði: %.1f%%/ár  |  Háð framboðsteygni og CAP-dekkun",
+                              m$effective_annual_exit * 100),
            x = NULL, y = NULL) +
       rekon_theme(base_size = 12) +
       theme(
-        plot.title = element_text(face = "bold", colour = col_brown, size = 14),
+        plot.title = element_text(size = 14),
         panel.grid.major.x = element_line(colour = "#E5E7EB", linewidth = 0.3)
       )
   }, res = 110, bg = "transparent")
 
-  # ── Tab 2: Winners/losers table ──
+  # ────────────────────────────────────────────────────────────────
+  # DETAIL TABLE
+  # ────────────────────────────────────────────────────────────────
 
-  output$t_winners_table <- renderUI({
-    t <- tariff()
-    c <- calcs()
-    fx <- t$fx
-
-    net_farmer <- c$total - t$total_loss_eur
+  output$detail_table_html <- renderUI({
+    m <- model()
+    s <- m$sectors
 
     badge <- function(label, color) {
-      sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
+      sprintf('<span style="display:inline-block;padding:3px 10px;border-radius:4px;background:%s;color:#fff;font-size:10px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
+    }
+    badge_eu <- badge("ESB", col_p1)
+    badge_is <- badge("Ísland", col_accent)
+    badge_both <- badge("Samfjármögnun", col_anc)
+
+    td <- function(x, align = "left", bold = FALSE, color = NULL) {
+      style <- sprintf("padding:8px 12px;text-align:%s;font-family:%s;%s%s",
+                       align,
+                       if (align == "right") "Montserrat,sans-serif" else "Lora,serif",
+                       if (bold) "font-weight:700;" else "",
+                       if (!is.null(color)) paste0("color:", color, ";") else "")
+      sprintf("<td style='%s'>%s</td>", style, x)
+    }
+    tr <- function(..., bg = NULL) {
+      style <- if (!is.null(bg)) sprintf(' style="background:%s;"', bg) else ""
+      paste0("<tr", style, ">", paste0(...), "</tr>")
     }
 
-    rows <- sprintf('
-      <tr style="background:%s;">
-        <td style="padding:10px 14px;font-weight:600;">Framlei\u00f0endur (b\u00e6ndur)</td>
-        <td style="padding:10px 14px;text-align:right;color:%s;font-weight:700;font-family:Montserrat;">\u2212\u20ac%.0fM</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">+\u20ac%.0fM</td>
-        <td style="padding:10px 14px;text-align:right;color:%s;font-weight:700;font-family:Montserrat;">%s\u20ac%.0fM</td>
-        <td style="padding:10px 14px;text-align:center;">%s</td>
-      </tr>
-      <tr>
-        <td style="padding:10px 14px;font-weight:600;">Neytendur</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
-        <td style="padding:10px 14px;text-align:right;color:%s;font-weight:700;font-family:Montserrat;">+\u20ac%.0fM</td>
-        <td style="padding:10px 14px;text-align:center;">%s</td>
-      </tr>
-      <tr style="background:%s;">
-        <td style="padding:10px 14px;font-weight:600;">R\u00edkissj\u00f3\u00f0ur (tolltek.)</td>
-        <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212tolltekjur</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
-        <td style="padding:10px 14px;text-align:center;">%s</td>
-      </tr>
-      <tr>
-        <td style="padding:10px 14px;font-weight:600;">Dreifbýli / byggðar</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2212%s b\u00fa</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">ANC stu\u00f0n.</td>
-        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
-        <td style="padding:10px 14px;text-align:center;">%s</td>
-      </tr>',
-      col_cloud,
-      col_red, t$total_loss_eur,
-      c$total,
-      if (net_farmer >= 0) col_green else col_red,
-      if (net_farmer >= 0) "+" else "\u2212",
-      abs(net_farmer),
-      if (net_farmer >= 0) badge("Jafnv\u00e6gi", col_moss) else badge("Tap", col_red),
-      col_moss, t$consumer_save_eur, badge("\u00c1vinningur", col_moss),
-      col_cloud,
-      col_red,
-      badge("Hlutlaust/Tap", col_basalt),
-      format(t$farms_lost, big.mark = "."),
-      badge("\u00c1h\u00e6ttulegt", col_red)
+    rows <- paste0(
+      # ── BASELINE vs ADJUSTED ──
+      tr(td("GRUNNSTAÐA FYRIR AÐILD", bold = TRUE), td(""), td(""), td(""), td(""), bg = col_cloud),
+      tr(td("&nbsp;&nbsp;Mjólk"),
+         td(sprintf("%.0f M L", input$base_milk_litres), "right"),
+         td(sprintf("\u20ac%.1fM", s$val_eur[1]), "right"),
+         td(""), td("")),
+      tr(td("&nbsp;&nbsp;Kindakjöt"),
+         td(sprintf("%s ær", format(input$base_ewes, big.mark = ".")), "right"),
+         td(sprintf("\u20ac%.1fM", s$val_eur[2]), "right"),
+         td(""), td("")),
+      tr(td("&nbsp;&nbsp;Nautakjöt"),
+         td(sprintf("%s gripir", format(input$base_cattle, big.mark = ".")), "right"),
+         td(sprintf("\u20ac%.1fM", s$val_eur[3]), "right"),
+         td(""), td("")),
+      tr(td("&nbsp;&nbsp;Egg/alifuglar"), td(""), td(sprintf("\u20ac%.1fM", s$val_eur[4]), "right"), td(""), td("")),
+      tr(td("&nbsp;&nbsp;Grænmeti"), td(""), td(sprintf("\u20ac%.1fM", s$val_eur[5]), "right"), td(""), td("")),
+      tr(td("&nbsp;&nbsp;Samtals framleiðsla", bold = TRUE), td(""),
+         td(sprintf("\u20ac%.0fM", m$total_before_eur), "right", bold = TRUE), td(""), td(""),
+         bg = col_cloud),
+
+      # ── PRICE SHOCK + SUPPLY RESPONSE ──
+      tr(td("EFTIR AÐILD (leiðrétt)", bold = TRUE), td("Magn"), td("Tekjur"), td("Breyting"), td(""), bg = col_cloud),
+      tr(td("&nbsp;&nbsp;Mjólk"),
+         td(sprintf("%.0f M L", m$adj_milk), "right"),
+         td(sprintf("\u20ac%.1fM", s$revenue_after_eur[1]), "right"),
+         td(sprintf("\u2212%.0f%%", s$drop_pct[1] + abs(s$prod_change_pct[1]) * 100), "right", color = col_red),
+         td("")),
+      tr(td("&nbsp;&nbsp;Kindakjöt"),
+         td(sprintf("%s ær", format(m$adj_ewes, big.mark = ".")), "right"),
+         td(sprintf("\u20ac%.1fM", s$revenue_after_eur[2]), "right"),
+         td(sprintf("\u2212%.0f%%", s$drop_pct[2] + abs(s$prod_change_pct[2]) * 100), "right", color = col_red),
+         td("")),
+      tr(td("&nbsp;&nbsp;Nautakjöt"),
+         td(sprintf("%s gripir", format(m$adj_cattle, big.mark = ".")), "right"),
+         td(sprintf("\u20ac%.1fM", s$revenue_after_eur[3]), "right"),
+         td(sprintf("\u2212%.0f%%", s$drop_pct[3] + abs(s$prod_change_pct[3]) * 100), "right", color = col_red),
+         td("")),
+      tr(td("&nbsp;&nbsp;Egg/alifuglar"), td(""),
+         td(sprintf("\u20ac%.1fM", s$revenue_after_eur[4]), "right"),
+         td(sprintf("\u2212%.0f%%", s$drop_pct[4] + abs(s$prod_change_pct[4]) * 100), "right", color = col_red),
+         td("")),
+      tr(td("&nbsp;&nbsp;Grænmeti"), td(""),
+         td(sprintf("\u20ac%.1fM", s$revenue_after_eur[5]), "right"),
+         td(sprintf("\u2212%.0f%%", s$drop_pct[5] + abs(s$prod_change_pct[5]) * 100), "right", color = col_red),
+         td("")),
+      tr(td("&nbsp;&nbsp;Tekjutap samtals", bold = TRUE), td(""),
+         td(sprintf("\u2212\u20ac%.0fM", m$total_loss_eur), "right", bold = TRUE, color = col_red),
+         td(""), td(""),
+         bg = col_cloud),
+
+      # ── CAP ON ADJUSTED BASE ──
+      tr(td("CAP-STUÐNINGUR (leiðréttur)", bold = TRUE), td("Grunnur"), td("\u20acM"), td(""), td("Greiðandi"), bg = col_cloud),
+      tr(td("&nbsp;&nbsp;Stoð 1: Beingreiðslur"),
+         td(sprintf("%s ha \u00d7 \u20ac%s", format(m$adj_ha, big.mark = "."), input$p1_rate), "right"),
+         td(sprintf("\u20ac%.1fM", m$p1), "right"),
+         td(""), td(badge_eu, "center")),
+      tr(td("&nbsp;&nbsp;Art. 142: Mjólk"),
+         td(sprintf("%.0fM L \u00d7 \u20ac%.2f", m$adj_milk, input$milk_rate), "right"),
+         td(sprintf("\u20ac%.1fM", m$nordic_milk), "right"),
+         td(""), td(badge_is, "center")),
+      tr(td("&nbsp;&nbsp;Art. 142: Sauðfé"),
+         td(sprintf("%s \u00d7 \u20ac%s", format(m$adj_ewes, big.mark = "."), input$ewe_rate), "right"),
+         td(sprintf("\u20ac%.1fM", m$nordic_sheep), "right"),
+         td(""), td(badge_is, "center")),
+      tr(td("&nbsp;&nbsp;Art. 142: Nautgripir"),
+         td(sprintf("%s \u00d7 \u20ac%s", format(m$adj_cattle, big.mark = "."), input$cattle_rate), "right"),
+         td(sprintf("\u20ac%.1fM", m$nordic_cows), "right"),
+         td(""), td(badge_is, "center")),
+      tr(td("&nbsp;&nbsp;ANC Harðbýli"),
+         td(sprintf("%s ha \u00d7 \u20ac%s", format(m$adj_ha, big.mark = "."), input$anc_rate), "right"),
+         td(sprintf("\u20ac%.1fM", m$anc_total), "right"),
+         td(""), td(badge_both, "center")),
+      tr(td("CAP SAMTALS", bold = TRUE), td(""),
+         td(sprintf("\u20ac%.0fM", m$cap_total), "right", bold = TRUE, color = col_green),
+         td(""), td(paste(badge_eu, badge_is), "center"),
+         bg = col_cloud),
+
+      # ── NET ──
+      tr(td("NETTÓSTAÐA", bold = TRUE), td(""), td(""), td(""), td(""), bg = col_cloud),
+      tr(td("&nbsp;&nbsp;Tekjutap"), td(""), td(sprintf("\u2212\u20ac%.0fM", m$total_loss_eur), "right", color = col_red), td(""), td("")),
+      tr(td("&nbsp;&nbsp;CAP-stuðningur"), td(""), td(sprintf("+\u20ac%.0fM", m$cap_total), "right", color = col_green), td(""), td("")),
+      tr(td("&nbsp;&nbsp;NETTÓ BÆNDUR", bold = TRUE), td(""),
+         td(sprintf("%s\u20ac%.0fM", if (m$net_farmer >= 0) "+" else "\u2212", abs(m$net_farmer)), "right", bold = TRUE,
+            color = if (m$net_farmer >= 0) col_green else col_red),
+         td(sprintf("%.0f%% dekking", m$cap_covers_pct), "right"), td(""),
+         bg = col_cloud)
     )
 
     HTML(paste0(
       '<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">',
       '<thead><tr style="border-bottom:2px solid ', col_brown, ';background:', col_cloud, ';">',
-      '<th style="padding:8px 14px;text-align:left;font-size:12px;color:', col_grey, ';text-transform:uppercase;">A\u00f0ili</th>',
-      '<th style="padding:8px 14px;text-align:right;font-size:12px;color:', col_grey, ';text-transform:uppercase;">Tekjutap</th>',
-      '<th style="padding:8px 14px;text-align:right;font-size:12px;color:', col_grey, ';text-transform:uppercase;">CAP b\u00e6tur</th>',
-      '<th style="padding:8px 14px;text-align:right;font-size:12px;color:', col_grey, ';text-transform:uppercase;">Nett\u00f3</th>',
-      '<th style="padding:8px 14px;text-align:center;font-size:12px;color:', col_grey, ';text-transform:uppercase;">Mat</th>',
+      sprintf('<th style="padding:8px 12px;text-align:left;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Liður</th>', col_grey),
+      sprintf('<th style="padding:8px 12px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Magn/grunnur</th>', col_grey),
+      sprintf('<th style="padding:8px 12px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">\u20acM/ári</th>', col_grey),
+      sprintf('<th style="padding:8px 12px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Breyting</th>', col_grey),
+      sprintf('<th style="padding:8px 12px;text-align:center;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Greiðandi</th>', col_grey),
+      '</tr></thead><tbody>',
+      rows,
+      '</tbody></table>'
+    ))
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # WINNERS / LOSERS TABLE
+  # ────────────────────────────────────────────────────────────────
+
+  output$winners_table_html <- renderUI({
+    m <- model()
+
+    badge <- function(label, color) {
+      sprintf('<span style="display:inline-block;padding:4px 14px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:700;font-family:Montserrat;">%s</span>', color, label)
+    }
+
+    farmer_verdict <- if (m$cap_covers_pct >= 90) badge("Nánast jafnvægi", col_moss)
+                      else if (m$cap_covers_pct >= 60) badge("Verulegt tap", col_anc)
+                      else badge("Alvarlegt tap", col_red)
+
+    td <- function(x, align = "left", bold = FALSE, color = NULL) {
+      style <- sprintf("padding:10px 14px;text-align:%s;font-family:%s;%s%s",
+                       align,
+                       if (bold || align == "right") "Montserrat,sans-serif" else "Lora,serif",
+                       if (bold) "font-weight:700;" else "",
+                       if (!is.null(color)) paste0("color:", color, ";") else "")
+      sprintf("<td style='%s'>%s</td>", style, x)
+    }
+
+    rows <- paste0(
+      sprintf('<tr style="background:%s;">', col_cloud),
+      td("Framleiðendur (bændur)", bold = TRUE),
+      td(sprintf("\u2212\u20ac%.0fM tekjur", m$total_loss_eur), "right", color = col_red),
+      td(sprintf("+\u20ac%.0fM CAP", m$cap_total), "right", color = col_green),
+      td(sprintf("%s\u20ac%.0fM", if (m$net_farmer >= 0) "+" else "\u2212", abs(m$net_farmer)), "right",
+         bold = TRUE, color = if (m$net_farmer >= 0) col_green else col_red),
+      td(farmer_verdict, "center"),
+      "</tr>",
+
+      "<tr>",
+      td("Neytendur (heimilin)", bold = TRUE),
+      td("Matvælaverð lækkar", "right"),
+      td(sprintf("+\u20ac%.0fM/ár", m$consumer_save_eur), "right", color = col_moss),
+      td(sprintf("%.0f ma.kr. sparnaður", m$consumer_save_isk), "right", color = col_moss),
+      td(badge("Ávinningur", col_moss), "center"),
+      "</tr>",
+
+      sprintf('<tr style="background:%s;">', col_cloud),
+      td("Ríkissjóður", bold = TRUE),
+      td("Tapar tolltekjum", "right", color = col_red),
+      td("Sparar stuðning", "right", color = col_moss),
+      td("Óvíst", "right"),
+      td(badge("Hlutlaust", col_basalt), "center"),
+      "</tr>",
+
+      "<tr>",
+      td("Dreifbýli / byggðir", bold = TRUE),
+      td(sprintf("\u2212%s bú (%s ár)",
+                 format(input$base_farms - m$farms_after, big.mark = "."),
+                 input$transition_years), "right", color = col_red),
+      td("ANC verndar land", "right"),
+      td(sprintf("%.0f bú eftir", m$farms_after), "right"),
+      td(badge("Áhættulegt", col_red), "center"),
+      "</tr>"
+    )
+
+    HTML(paste0(
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">',
+      '<thead><tr style="border-bottom:2px solid ', col_brown, ';background:', col_cloud, ';">',
+      sprintf('<th style="padding:8px 14px;text-align:left;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Aðili</th>', col_grey),
+      sprintf('<th style="padding:8px 14px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Tap</th>', col_grey),
+      sprintf('<th style="padding:8px 14px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Ávinningur</th>', col_grey),
+      sprintf('<th style="padding:8px 14px;text-align:right;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Nettó</th>', col_grey),
+      sprintf('<th style="padding:8px 14px;text-align:center;font-size:11px;color:%s;text-transform:uppercase;font-family:Montserrat;">Mat</th>', col_grey),
       '</tr></thead><tbody>',
       rows,
       '</tbody></table>'
