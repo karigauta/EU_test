@@ -305,13 +305,13 @@ ui <- fluidPage(
     mainPanel(
       width = 8,
 
-      # ── Row 1: Key Metrics (4 boxes) ──
+      # ── Row 1: Key Metrics ──
       fluidRow(
         column(3, div(class = "metric-box loss",
                       div(class = "metric-label", "Tekjutap bænda"),
                       uiOutput("metric_loss"))),
         column(3, div(class = "metric-box cap",
-                      div(class = "metric-label", "CAP heildaráætlun (leiðrétt)"),
+                      div(class = "metric-label", "CAP leiðrétt"),
                       uiOutput("metric_cap_adj"))),
         column(3, div(class = "metric-box gap",
                       div(class = "metric-label", "Nettó staða"),
@@ -319,6 +319,17 @@ ui <- fluidPage(
         column(3, div(class = "metric-box gain",
                       div(class = "metric-label", "Sparnaður neytenda"),
                       uiOutput("metric_consumer")))
+      ),
+      fluidRow(
+        column(4, div(class = "metric-box eu",
+                      div(class = "metric-label", "Núverandi kerfi (fastur pottur)"),
+                      uiOutput("metric_fixed_pot"))),
+        column(4, div(class = "metric-box farm",
+                      div(class = "metric-label", "Stuðningur á bú — núverandi kerfi"),
+                      uiOutput("metric_per_farm_current"))),
+        column(4, div(class = "metric-box rate",
+                      div(class = "metric-label", "Tapaður pottspólstri"),
+                      uiOutput("metric_cushion_lost")))
       ),
 
       hr(class = "section-divider"),
@@ -339,15 +350,29 @@ ui <- fluidPage(
 
       hr(class = "section-divider"),
 
-      # ── Section C: CAP stuðningur — Leiðrétt ──
-      h4("C. CAP stuðningur \u2014 Leiðrétt fyrir framleiðslusamdrætti"),
+      # ── Section C: System Comparison — Fixed pot vs CAP ──
+      h4("C. Kerfismunur \u2014 Fastur pottur (núverandi) vs. per-unit (CAP)"),
+      div(class = "context-box",
+        HTML("<strong>Lykilmunur:</strong> Búvörusamningar eru <em>fastur pottur</em> \u2014 þegar bú hætta,
+        skiptist sama upphæð á færri einingar og stuðningur á bú <em>hækkar</em>.
+        CAP er <em>per-unit</em> kerfi \u2014 þegar framleiðsla minnkar, lækka greiðslur í hlutfalli.
+        Þetta þýðir að yfirfærsla í CAP kostar ekki bara tollverndina, heldur einnig
+        þennan innbyggða púða núverandi kerfis.")
+      ),
+      plotOutput("system_comparison_chart", height = "420px"),
+      uiOutput("system_comparison_table"),
+
+      hr(class = "section-divider"),
+
+      # ── Section D: CAP stuðningur — Leiðrétt ──
+      h4("D. CAP stuðningur \u2014 Leiðrétt fyrir framleiðslusamdrætti"),
       plotOutput("cap_comparison_chart", height = "420px"),
       uiOutput("payer_bar_html"),
 
       hr(class = "section-divider"),
 
-      # ── Section D: Heildarjafnvægi ──
-      h4("D. Heildarjafnvægi \u2014 Tekjutap vs. CAP vs. Neytendur"),
+      # ── Section E: Heildarjafnvægi ──
+      h4("E. Heildarjafnvægi \u2014 Tekjutap vs. CAP vs. Neytendur"),
       fluidRow(
         column(6, plotOutput("balance_chart", height = "340px")),
         column(6, plotOutput("farm_projection", height = "340px"))
@@ -355,20 +380,24 @@ ui <- fluidPage(
 
       hr(class = "section-divider"),
 
-      # ── Section E: Winners/losers table ──
-      h4("E. Ávinningur og kostnaður \u2014 Hver hagnast?"),
+      # ── Section F: Winners/losers table ──
+      h4("F. Ávinningur og kostnaður \u2014 Hver hagnast?"),
       uiOutput("winners_table"),
 
       hr(class = "section-divider"),
 
-      # ── Section F: Detail breakdown table ──
-      h4("F. Sundurliðun \u2014 Grunnlína vs. Leiðrétt"),
+      # ── Section G: Detail breakdown table ──
+      h4("G. Sundurliðun \u2014 Grunnlína vs. Leiðrétt"),
       uiOutput("detail_table_html"),
 
       p(class = "source-note",
         "Athugasemd: Þetta líkan er samþætt. Tollaafnám leiðir til verðlækkunar, ",
         "sem dregur úr framleiðslu (eftir framboðsteygni), ",
-        "sem aftur lækkar CAP greiðslur. Raunveruleg áhrif fara eftir aðlögunartíma, ",
+        "sem aftur lækkar CAP greiðslur. Auk þess er tekið tillit til kerfismunarins: ",
+        "Búvörusamningar eru fastur pottur (samdrátt = meiri stuðningur á bú), ",
+        "en CAP er per-unit kerfi (samdráttur = lægri heildargreiðslur). ",
+        "Þessi falinn kostnaður er sýndur í kafla C. ",
+        "Raunveruleg áhrif fara eftir aðlögunartíma, ",
         "sérákvæðum í aðildarsamningi og viðbrögðum framleiðenda. ",
         "Finnland fékk 5 ára aðlögunartímabil.")
     )
@@ -390,7 +419,78 @@ server <- function(input, output, session) {
       ewes = input$ewes,
       cattle = input$cattle,
       fx = input$eur_isk,
-      current_eur = input$current_support_isk * 1000 / input$eur_isk
+      farms = input$farms_now,
+      current_eur = input$current_support_isk * 1000 / input$eur_isk,
+      current_isk = input$current_support_isk  # ma.kr.
+    )
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # REACTIVE: CURRENT SYSTEM (fixed-pot) — what happens if
+  # production declines UNDER the current Búvörusamningar regime
+  #
+  # Key insight: the total budget pot is FIXED (set by political
+  # agreement). When farms exit and production shrinks, the same
+  # pot is divided among fewer units → per-unit support RISES.
+  # This is the opposite of CAP where per-unit rates are fixed
+  # and total payments shrink with production.
+  # ────────────────────────────────────────────────────────────────
+  current_system <- reactive({
+    b <- baseline()
+    s <- shock()
+    t <- tariff_loss()
+
+    # The fixed pot stays the same regardless of production changes
+    fixed_pot_eur <- b$current_eur  # €M — doesn't change
+
+    # Per-unit support today (before any shock)
+    # Approximate: split current support proportionally by sector value
+    total_prod_val <- input$dairy_val + input$lamb_val + input$beef_val +
+                      input$egg_val + input$veg_val
+    dairy_share <- input$dairy_val / total_prod_val
+    lamb_share  <- input$lamb_val / total_prod_val
+    beef_share  <- input$beef_val / total_prod_val
+
+    # Per-unit support today
+    support_per_litre_now <- (fixed_pot_eur * dairy_share) / (b$milk)       # €M per M litres = €/litre
+    support_per_ewe_now   <- (fixed_pot_eur * lamb_share * 1e6) / b$ewes    # €/ewe
+    support_per_head_now  <- (fixed_pot_eur * beef_share * 1e6) / b$cattle  # €/head
+    support_per_farm_now  <- fixed_pot_eur * 1e6 / b$farms                  # €/farm
+
+    # Per-unit support AFTER production decline (same pot, fewer units)
+    support_per_litre_after <- (fixed_pot_eur * dairy_share) / (s$new_milk)
+    support_per_ewe_after   <- (fixed_pot_eur * lamb_share * 1e6) / s$new_ewes
+    support_per_head_after  <- (fixed_pot_eur * beef_share * 1e6) / s$new_cattle
+    farms_after <- t$farms_after
+    support_per_farm_after  <- fixed_pot_eur * 1e6 / farms_after
+
+    # The "cushion effect" — how much more each surviving unit gets
+    dairy_cushion_pct <- (support_per_litre_after / support_per_litre_now - 1) * 100
+    sheep_cushion_pct <- (support_per_ewe_after / support_per_ewe_now - 1) * 100
+    beef_cushion_pct  <- (support_per_head_after / support_per_head_now - 1) * 100
+    farm_cushion_pct  <- (support_per_farm_after / support_per_farm_now - 1) * 100
+
+    list(
+      fixed_pot_eur = fixed_pot_eur,
+      # Per-unit before
+      per_litre_now = support_per_litre_now,
+      per_ewe_now   = support_per_ewe_now,
+      per_head_now  = support_per_head_now,
+      per_farm_now  = support_per_farm_now,
+      # Per-unit after (same pot, fewer units)
+      per_litre_after = support_per_litre_after,
+      per_ewe_after   = support_per_ewe_after,
+      per_head_after  = support_per_head_after,
+      per_farm_after  = support_per_farm_after,
+      # Cushion %
+      dairy_cushion = dairy_cushion_pct,
+      sheep_cushion = sheep_cushion_pct,
+      beef_cushion  = beef_cushion_pct,
+      farm_cushion  = farm_cushion_pct,
+      # Shares
+      dairy_share = dairy_share,
+      lamb_share = lamb_share,
+      beef_share = beef_share
     )
   })
 
@@ -574,6 +674,48 @@ server <- function(input, output, session) {
     )
   })
 
+  # ── Fixed-pot metrics ──
+
+  output$metric_fixed_pot <- renderUI({
+    b <- baseline()
+    div(
+      div(class = "metric-value", sprintf("\u20ac%.0fM", b$current_eur)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          "Fastur \u2014 breytist ekki \u00feegar b\u00fa h\u00e6tta")
+    )
+  })
+
+  output$metric_per_farm_current <- renderUI({
+    cs <- current_system()
+    tagList(
+      div(class = "metric-value", sprintf("\u20ac%s", format(round(cs$per_farm_now), big.mark = "."))),
+      div(class = "metric-sub", style = paste0("color:", col_moss),
+          sprintf("\u2192 \u20ac%s eftir b\u00fastö\u00f0vun (+%.0f%%)",
+                  format(round(cs$per_farm_after), big.mark = "."),
+                  cs$farm_cushion))
+    )
+  })
+
+  output$metric_cushion_lost <- renderUI({
+    cs <- current_system()
+    ca <- cap_adjusted()
+    b <- baseline()
+    t <- tariff_loss()
+    # Under current system, surviving farms keep the full pot
+    # Under CAP, surviving farms get reduced total (production-linked)
+    # The difference is the "cushion lost"
+    cap_per_farm <- ca$total * 1e6 / t$farms_after
+    cushion_lost_per_farm <- cs$per_farm_after - cap_per_farm
+    tagList(
+      div(class = "metric-value", style = paste0("color:", col_red),
+          sprintf("\u2212\u20ac%s/b\u00fa", format(round(cushion_lost_per_farm), big.mark = "."))),
+      div(class = "metric-sub",
+          sprintf("N\u00fav. kerfi: \u20ac%s/b\u00fa vs CAP: \u20ac%s/b\u00fa",
+                  format(round(cs$per_farm_after), big.mark = "."),
+                  format(round(cap_per_farm), big.mark = ".")))
+    )
+  })
+
   # ────────────────────────────────────────────────────────────────
   # SECTION A: Price Impact Chart
   # ────────────────────────────────────────────────────────────────
@@ -668,7 +810,154 @@ server <- function(input, output, session) {
   }, res = 110, bg = "transparent")
 
   # ────────────────────────────────────────────────────────────────
-  # SECTION C: CAP Comparison Chart (Baseline vs Adjusted waterfall)
+  # SECTION C: System Comparison — Fixed pot vs CAP per-unit
+  # ────────────────────────────────────────────────────────────────
+
+  output$system_comparison_chart <- renderPlot({
+    b <- baseline()
+    cs <- current_system()
+    ca <- cap_adjusted()
+    t <- tariff_loss()
+
+    # Compare per-farm support under both systems at different exit levels
+    exit_levels <- seq(0, 50, by = 5)  # 0% to 50% farm exit
+    farms_at_level <- b$farms * (1 - exit_levels / 100)
+
+    # Current system: fixed pot / fewer farms
+    current_per_farm <- (b$current_eur * 1e6) / farms_at_level
+
+    # CAP system: total CAP shrinks as production drops (proportionally)
+    # Approximate: production decline is proportional to farm exit
+    # (not exact, but reasonable approximation for this comparison)
+    s <- shock()
+    prod_decline_at_exit <- exit_levels * 0.7  # farms exiting ≈ 70% production impact
+    cap_total_at_level <- ca$total * (1 - prod_decline_at_exit / 100 * 0.3)  # partial effect
+    # More precise: use the actual adjusted CAP at current exit level
+    # and scale linearly from cap_baseline to cap_adjusted
+    cb <- cap_baseline()
+    actual_exit_pct <- input$farm_exit_10y
+    cap_at_level <- cb$total + (ca$total - cb$total) * (exit_levels / actual_exit_pct)
+    cap_at_level <- pmin(cap_at_level, cb$total)  # can't exceed baseline
+    cap_at_level <- pmax(cap_at_level, ca$total * 0.5)  # floor
+    cap_per_farm <- (cap_at_level * 1e6) / farms_at_level
+
+    df <- data.frame(
+      exit = rep(exit_levels, 2),
+      system = factor(rep(c("N\u00faverandi kerfi\n(fastur pottur)", "CAP\n(per-unit)"), each = length(exit_levels)),
+                      levels = c("N\u00faverandi kerfi\n(fastur pottur)", "CAP\n(per-unit)")),
+      per_farm = c(current_per_farm, cap_per_farm) / 1000  # €thousands
+    )
+
+    # Mark the actual expected exit point
+    actual_idx <- which.min(abs(exit_levels - actual_exit_pct))
+
+    ggplot(df, aes(x = exit, y = per_farm, colour = system, linewidth = system)) +
+      geom_line() +
+      geom_point(data = df[df$exit == exit_levels[actual_idx], ],
+                 size = 4, shape = 21, fill = "white", stroke = 1.5) +
+      annotate("text", x = exit_levels[actual_idx] + 2,
+               y = current_per_farm[actual_idx] / 1000 + 2,
+               label = sprintf("Sp\u00e1 b\u00fast.: %.0f%%", actual_exit_pct),
+               hjust = 0, size = 3.3, colour = col_brown, fontface = "bold", family = "Montserrat") +
+      geom_ribbon(data = data.frame(
+                    exit = exit_levels,
+                    ymin = cap_per_farm / 1000,
+                    ymax = current_per_farm / 1000),
+                  aes(x = exit, ymin = ymin, ymax = ymax),
+                  inherit.aes = FALSE, fill = col_red, alpha = 0.08) +
+      annotate("text",
+               x = mean(exit_levels), y = mean(c(current_per_farm[6], cap_per_farm[6])) / 1000,
+               label = "Tap\u00f0ur p\u00fa\u00f0i", colour = col_red, size = 3.5,
+               fontface = "italic", family = "Lora") +
+      scale_colour_manual(values = c(col_p1, col_red)) +
+      scale_linewidth_manual(values = c(1.5, 1.5)) +
+      scale_x_continuous(labels = function(x) paste0(x, "%"),
+                         breaks = seq(0, 50, 10)) +
+      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "k")) +
+      labs(title = "Stu\u00f0ningur \u00e1 b\u00fa \u2014 N\u00faverandi kerfi vs. CAP",
+           subtitle = "N\u00faverandi kerfi: fastur pottur styrkist vi\u00f0 b\u00fast\u00f6\u00f0vun  |  CAP: per-unit grei\u00f0slur dragast saman",
+           x = "B\u00fast\u00f6\u00f0vun (%)", y = "Stu\u00f0ningur \u00e1 b\u00fa (\u20ac\u00fe\u00fas.)",
+           colour = NULL, linewidth = NULL) +
+      rekon_theme() +
+      theme(
+        legend.position = "top",
+        legend.text = element_text(size = 11),
+        panel.grid.major.x = element_line(colour = "#E5E7EB", linewidth = 0.3)
+      )
+  }, res = 110, bg = "transparent")
+
+  output$system_comparison_table <- renderUI({
+    cs <- current_system()
+    ca <- cap_adjusted()
+    b <- baseline()
+    t <- tariff_loss()
+
+    cap_per_farm <- ca$total * 1e6 / t$farms_after
+
+    HTML(sprintf('
+      <div style="margin:18px 0; font-family:Montserrat,sans-serif;">
+        <table style="width:100%%;border-collapse:collapse;font-size:13px;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;">
+          <thead><tr style="border-bottom:2px solid %s;background:%s;">
+            <th style="padding:8px 14px;text-align:left;font-size:12px;color:%s;text-transform:uppercase;">M\u00e6likvar\u00f0i</th>
+            <th style="padding:8px 14px;text-align:right;font-size:12px;color:%s;text-transform:uppercase;">N\u00fav. kerfi (\u00ed dag)</th>
+            <th style="padding:8px 14px;text-align:right;font-size:12px;color:%s;text-transform:uppercase;">N\u00fav. kerfi (eftir b\u00fast.)</th>
+            <th style="padding:8px 14px;text-align:right;font-size:12px;color:%s;text-transform:uppercase;">CAP (lei\u00f0r\u00e9tt)</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background:%s;">
+              <td style="padding:8px 14px;font-weight:600;">Heildarpottur (\u20acM)</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;color:%s;">\u20ac%.0fM</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;color:%s;">\u20ac%.0fM</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;color:%s;">\u20ac%.0fM</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 14px;font-weight:600;">Fj\u00f6ldi b\u00faa</td>
+              <td style="padding:8px 14px;text-align:right;">%s</td>
+              <td style="padding:8px 14px;text-align:right;">%s</td>
+              <td style="padding:8px 14px;text-align:right;">%s</td>
+            </tr>
+            <tr style="background:%s;">
+              <td style="padding:8px 14px;font-weight:600;">Stu\u00f0ningur \u00e1 b\u00fa (\u20ac)</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;">\u20ac%s</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;color:%s;">\u20ac%s</td>
+              <td style="padding:8px 14px;text-align:right;font-weight:700;color:%s;">\u20ac%s</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 14px;font-weight:600;">Breyting \u00e1 b\u00fa</td>
+              <td style="padding:8px 14px;text-align:right;">\u2014</td>
+              <td style="padding:8px 14px;text-align:right;color:%s;font-weight:700;">+%.0f%%</td>
+              <td style="padding:8px 14px;text-align:right;color:%s;font-weight:700;">%.0f%%</td>
+            </tr>
+            <tr style="border-top:2px solid %s;background:%s;">
+              <td style="padding:10px 14px;font-weight:700;color:%s;">Tapaður púði á bú</td>
+              <td style="padding:10px 14px;" colspan="2"></td>
+              <td style="padding:10px 14px;text-align:right;font-weight:700;color:%s;font-size:15px;">\u2212\u20ac%s/b\u00fa</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>',
+      col_brown, col_cloud, col_grey, col_grey, col_grey, col_grey,
+      col_cloud,
+      col_p1, b$current_eur,
+      col_p1, b$current_eur,  # same pot after exit!
+      col_red, ca$total,
+      format(b$farms, big.mark = "."),
+      format(t$farms_after, big.mark = "."),
+      format(t$farms_after, big.mark = "."),
+      col_cloud,
+      format(round(cs$per_farm_now), big.mark = "."),
+      col_moss, format(round(cs$per_farm_after), big.mark = "."),
+      col_red, format(round(cap_per_farm), big.mark = "."),
+      col_moss, cs$farm_cushion,
+      col_red, (cap_per_farm / cs$per_farm_now - 1) * 100,
+      col_red, col_cloud,
+      col_red,
+      col_red, format(round(cs$per_farm_after - cap_per_farm), big.mark = ".")
+    ))
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # SECTION D: CAP Comparison Chart (Baseline vs Adjusted waterfall)
   # ────────────────────────────────────────────────────────────────
 
   output$cap_comparison_chart <- renderPlot({
@@ -753,13 +1042,24 @@ server <- function(input, output, session) {
   output$balance_chart <- renderPlot({
     t <- tariff_loss()
     ca <- cap_adjusted()
+    b <- baseline()
+    cs <- current_system()
     net <- ca$total - t$total_loss_eur
 
+    # Lost cushion: difference between what current system would provide
+    # (same pot, fewer farms) and what CAP provides
+    lost_cushion <- b$current_eur - ca$total  # total €M difference
+
     df <- data.frame(
-      label = factor(c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt", "Nett\u00f3 sta\u00f0a", "Sparna\u00f0ur\nneytenda"),
-                     levels = c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt", "Nett\u00f3 sta\u00f0a", "Sparna\u00f0ur\nneytenda")),
-      value = c(-t$total_loss_eur, ca$total, net, t$consumer_save_eur),
-      fill  = c(col_red, col_green, if (net >= 0) col_moss else col_gap, col_consumer)
+      label = factor(c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt",
+                       "Tapa\u00f0ur\np\u00fa\u00f0i", "Nett\u00f3 sta\u00f0a",
+                       "Sparna\u00f0ur\nneytenda"),
+                     levels = c("Tekjutap\nb\u00e6nda", "CAP\nlei\u00f0r\u00e9tt",
+                                "Tapa\u00f0ur\np\u00fa\u00f0i", "Nett\u00f3 sta\u00f0a",
+                                "Sparna\u00f0ur\nneytenda")),
+      value = c(-t$total_loss_eur, ca$total, -lost_cushion, net, t$consumer_save_eur),
+      fill  = c(col_red, col_green, col_anc,
+                if (net >= 0) col_moss else col_gap, col_consumer)
     )
 
     ggplot(df, aes(x = label, y = value, fill = fill)) +
@@ -767,17 +1067,18 @@ server <- function(input, output, session) {
       geom_hline(yintercept = 0, colour = col_brown, linewidth = 0.5) +
       geom_text(aes(label = sprintf("\u20ac%.0fM", value),
                     vjust = ifelse(value >= 0, -0.5, 1.5)),
-                size = 4, fontface = "bold", colour = col_brown, family = "Montserrat") +
+                size = 3.8, fontface = "bold", colour = col_brown, family = "Montserrat") +
       scale_fill_identity() +
       scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
                          expand = expansion(mult = c(0.15, 0.15))) +
-      labs(title = "Heildarjafnv\u00e6gi",
-           subtitle = sprintf("Lei\u00f0r\u00e9tt CAP dekkar %.0f%% af tekjutapi", ca$total / t$total_loss_eur * 100),
+      labs(title = "Heildarjafnv\u00e6gi m. tapa\u00f0um p\u00fa\u00f0a",
+           subtitle = sprintf("CAP dekkar %.0f%% af tapi  |  Tapa\u00f0ur p\u00fa\u00f0i: \u20ac%.0fM (fastur pottur \u2212 CAP)",
+                              ca$total / t$total_loss_eur * 100, lost_cushion),
            x = NULL, y = NULL) +
       rekon_theme(base_size = 12) +
       theme(
         plot.title = element_text(face = "bold", colour = col_brown, size = 14),
-        axis.text.x = element_text(size = 10, lineheight = 1.1)
+        axis.text.x = element_text(size = 9, lineheight = 1.1)
       )
   }, res = 110, bg = "transparent")
 
@@ -817,7 +1118,10 @@ server <- function(input, output, session) {
   output$winners_table <- renderUI({
     t <- tariff_loss()
     ca <- cap_adjusted()
+    b <- baseline()
+    cs <- current_system()
     net_farmer <- ca$total - t$total_loss_eur
+    lost_cushion <- b$current_eur - ca$total
 
     badge <- function(label, color) {
       sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
@@ -832,20 +1136,28 @@ server <- function(input, output, session) {
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>
       <tr>
+        <td style="padding:10px 14px;font-weight:600;font-style:italic;color:%s;">
+          &nbsp;&nbsp;\u00dear af: tapa\u00f0ur p\u00fa\u00f0i kerfis</td>
+        <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212\u20ac%.0fM</td>
+        <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
+        <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212\u20ac%.0fM</td>
+        <td style="padding:10px 14px;text-align:center;">%s</td>
+      </tr>
+      <tr style="background:%s;">
         <td style="padding:10px 14px;font-weight:600;">Neytendur</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
         <td style="padding:10px 14px;text-align:right;color:%s;font-weight:700;font-family:Montserrat;">+\u20ac%.0fM</td>
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>
-      <tr style="background:%s;">
+      <tr>
         <td style="padding:10px 14px;font-weight:600;">R\u00edkissj\u00f3\u00f0ur (tolltek.)</td>
         <td style="padding:10px 14px;text-align:right;color:%s;font-family:Montserrat;">\u2212tolltekjur</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2014</td>
         <td style="padding:10px 14px;text-align:center;">%s</td>
       </tr>
-      <tr>
+      <tr style="background:%s;">
         <td style="padding:10px 14px;font-weight:600;">Dreifb\u00fdli / bygg\u00f0ar</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">\u2212%s b\u00fa</td>
         <td style="padding:10px 14px;text-align:right;font-family:Montserrat;">ANC stu\u00f0n.</td>
@@ -859,10 +1171,19 @@ server <- function(input, output, session) {
       if (net_farmer >= 0) "+" else "\u2212",
       abs(net_farmer),
       if (net_farmer >= 0) badge("Jafnv\u00e6gi", col_moss) else badge("Tap", col_red),
-      col_moss, t$consumer_save_eur, badge("\u00c1vinningur", col_moss),
+      # Lost cushion row
+      col_grey,
+      col_anc, lost_cushion,
+      col_anc, lost_cushion,
+      badge("Falinn kostna\u00f0ur", col_anc),
+      # Consumer row
       col_cloud,
+      col_moss, t$consumer_save_eur, badge("\u00c1vinningur", col_moss),
+      # Treasury row
       col_red,
       badge("Hlutlaust/Tap", col_basalt),
+      # Rural row
+      col_cloud,
       format(t$farms_lost, big.mark = "."),
       badge("\u00c1h\u00e6ttulegt", col_red)
     )
