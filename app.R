@@ -495,26 +495,28 @@ ui <- navbarPage(
                         min = 180, max = 400, value = 270, step = 10, post = " ma.kr."),
             helpText("Hagstofa THJ02105: 233 ma.kr. (2020 fastaverð). Við 2026 verðlag ~270–290 ma.kr. Heildarneysla á mat og drykkjarvörum."),
             div(class = "context-box",
-              HTML("<strong>CPI-vegið mat:</strong> Sparnaður reiknaður með vogum úr VIS01306 (Hagstofa 2025) og tollverndarstuðlum úr skýrslu ANR (2020). Grænmeti er að mestu þegar tollfrítt undir EES-bókun 3.")
+              HTML("<strong>CPI-vegið mat:</strong> Sparnaður neytenda er reiknaður sem: <em>verðlækkun framleiðanda × hlutfall framleiðandaverðs í smásöluverði × útgjöld á flokk</em>. Vogir úr VIS01306 (Hagstofa 2025). Hlutföll byggð á AHDB (UK), USDA ERS og OECD Iceland 2025.")
             ),
-            sliderInput("consumer_dairy_drop", "Mjólk & ostur — verðlækkun (%)",
-                        min = 10, max = 40, value = 25, step = 1, post = "%"),
-            helpText("ANR 2020: Ostur 21–34% tollvernd (vegin). Fljótandi mjólkurvörur lægra. Meðaltal ~25%."),
-            sliderInput("consumer_lamb_drop", "Lambakjöt — verðlækkun (%)",
-                        min = 10, max = 55, value = 30, step = 1, post = "%"),
-            helpText("Ísland er nettóútflytjandi á lambakjöti — verðlækkun fer eftir samkeppni við ESB-lambakjöt (Írland, Wales). Lægra en nautakjöt þar sem innlend eftirspurn er sterk."),
-            sliderInput("consumer_beef_drop", "Nautakjöt — verðlækkun (%)",
-                        min = 20, max = 55, value = 37, step = 1, post = "%"),
-            helpText("ANR 2020: 35–42% vegin tollvernd. Uppboðsverð 2019: 683 ISK/kg. Beint mat á verðmun við ESB."),
-            sliderInput("consumer_poultry_drop", "Alifuglar — verðlækkun (%)",
-                        min = 25, max = 65, value = 48, step = 1, post = "%"),
-            helpText("ANR 2020: 43–57% vegin tollvernd — hæst meðal kjöttegunda. Uppboðsverð 2019: 371 ISK/kg."),
-            sliderInput("consumer_egg_drop", "Egg — verðlækkun (%)",
-                        min = 25, max = 65, value = 50, step = 1, post = "%"),
-            helpText("Há tollvernd á eggjum samkvæmt tollskrá. Samræmist framleiðendahlutfalli (~55%)."),
-            sliderInput("consumer_veg_drop", "Grænmeti — verðlækkun (%)",
-                        min = 3, max = 20, value = 10, step = 1, post = "%"),
-            helpText("Grænmeti er að mestu þegar tollfrítt undir EES-bókun 3. Gróðurhúsarækt (tómatar, agúrkur) er innlend og jarðhitaknúin — lítil samkeppnisáhrif.")
+            div(class = "sidebar-section", "Hlutfall framleiðandaverðs í smásöluverði"),
+            helpText("Hversu stór hluti smásöluverðsins endurspeglar framleiðandaverðið? Hærra hlutfall þýðir að verðlækkun hjá framleiðanda skilar sér meira til neytenda."),
+            sliderInput("farm_share_dairy", "Mjólk & ostur — framleiðandahlutfall",
+                        min = 25, max = 60, value = 42, step = 1, post = "%"),
+            helpText("AHDB UK: mjólk 43%. Íslenskt samvinnukerfi (Mjólkursamsalan) þrýstir hlutfallinu upp. Miðgildi: 42%. (AHDB 2025, USDA ERS)"),
+            sliderInput("farm_share_lamb", "Lambakjöt — framleiðandahlutfall",
+                        min = 35, max = 68, value = 52, step = 1, post = "%"),
+            helpText("UK/Írland: 47–50%. Íslenskt samvinnuslátrun (SS/HB) styttir keðjuna — +5pp. Miðgildi: 52%. (AHDB Lamb Market Outlook 2024)"),
+            sliderInput("farm_share_beef", "Nautakjöt — framleiðandahlutfall",
+                        min = 30, max = 62, value = 48, step = 1, post = "%"),
+            helpText("UK AHDB: 48% (£4.80/£10 kg). USDA ERS: 45–50%. Miðgildi: 48%. (AHDB Beef Market Update 2023)"),
+            sliderInput("farm_share_poultry", "Alifuglar — framleiðandahlutfall",
+                        min = 22, max = 52, value = 38, step = 1, post = "%"),
+            helpText("Lægra en rautt kjöt vegna samþættrar framleiðslu (samningabúskapur). OECD Iceland 2025: há markaðsverðsstuðningur. Miðgildi: 38%."),
+            sliderInput("farm_share_eggs", "Egg — framleiðandahlutfall",
+                        min = 32, max = 62, value = 47, step = 1, post = "%"),
+            helpText("UK: 36–44% (sveiflur milli ára). Stutt keðja á Íslandi þrýstir hlutfallinu upp. Miðgildi: 47%. (FarmingUK 2024, USDA ERS)"),
+            sliderInput("farm_share_veg", "Grænmeti — framleiðandahlutfall",
+                        min = 15, max = 48, value = 30, step = 1, post = "%"),
+            helpText("USDA ERS: 20–29% (meðaltal 16 grænmetistegunda). Íslenskt gróðurhúsagrænmeti hefur styttri keðju — +5pp. Miðgildi: 30%. (USDA ERS Amber Waves 2018)")
           ),
           column(6,
             sliderInput("farm_exit_10y", "Bústöðvun á 10 árum (%)",
@@ -682,24 +684,36 @@ server <- function(input, output, session) {
     poultry_spend <- input$food_spend * (CPI_W_POULTRY / CPI_W_FOOD)
     veg_spend     <- input$food_spend * (CPI_W_VEG     / CPI_W_FOOD)
 
-    save_dairy   <- dairy_spend   * input$consumer_dairy_drop / 100
-    save_lamb    <- lamb_spend    * input$consumer_lamb_drop    / 100
-    save_beef    <- beef_spend    * input$consumer_beef_drop    / 100
-    save_poultry <- poultry_spend * input$consumer_poultry_drop / 100
-    save_eggs    <- egg_spend     * input$consumer_egg_drop   / 100
-    save_veg     <- veg_spend     * input$consumer_veg_drop   / 100
+    # Derived consumer price drops = producer drop × farm share
+    # (farm share = fraction of retail price attributable to farm gate)
+    cons_dairy_drop   <- input$dairy_drop * input$farm_share_dairy   / 100
+    cons_lamb_drop    <- input$lamb_drop  * input$farm_share_lamb    / 100
+    cons_beef_drop    <- input$beef_drop  * input$farm_share_beef    / 100
+    cons_poultry_drop <- input$egg_drop   * input$farm_share_poultry / 100  # egg_drop = "Egg/alifuglar" producer proxy
+    cons_egg_drop     <- input$egg_drop   * input$farm_share_eggs    / 100
+    cons_veg_drop     <- input$veg_drop   * input$farm_share_veg     / 100
+
+    save_dairy   <- dairy_spend   * cons_dairy_drop   / 100
+    save_lamb    <- lamb_spend    * cons_lamb_drop    / 100
+    save_beef    <- beef_spend    * cons_beef_drop    / 100
+    save_poultry <- poultry_spend * cons_poultry_drop / 100
+    save_eggs    <- egg_spend     * cons_egg_drop     / 100
+    save_veg     <- veg_spend     * cons_veg_drop     / 100
 
     consumer_save_isk <- save_dairy + save_lamb + save_beef + save_poultry + save_eggs + save_veg
     consumer_save_eur <- consumer_save_isk * 1000 / fx
 
     consumer_breakdown <- data.frame(
-      sector  = c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
-      spend   = c(dairy_spend, lamb_spend, beef_spend, poultry_spend, egg_spend, veg_spend),
-      drop    = c(input$consumer_dairy_drop,
-                  input$consumer_lamb_drop, input$consumer_beef_drop, input$consumer_poultry_drop,
-                  input$consumer_egg_drop, input$consumer_veg_drop),
-      savings = c(save_dairy, save_lamb, save_beef, save_poultry, save_eggs, save_veg),
-      group   = c("dairy", "meat", "meat", "meat", "eggs", "veg"),
+      sector        = c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
+      spend         = c(dairy_spend, lamb_spend, beef_spend, poultry_spend, egg_spend, veg_spend),
+      prod_drop     = c(input$dairy_drop, input$lamb_drop, input$beef_drop,
+                        input$egg_drop, input$egg_drop, input$veg_drop),
+      farm_share    = c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
+                        input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg),
+      drop          = c(cons_dairy_drop, cons_lamb_drop, cons_beef_drop,
+                        cons_poultry_drop, cons_egg_drop, cons_veg_drop),
+      savings       = c(save_dairy, save_lamb, save_beef, save_poultry, save_eggs, save_veg),
+      group         = c("dairy", "meat", "meat", "meat", "eggs", "veg"),
       stringsAsFactors = FALSE
     )
 
@@ -1290,15 +1304,15 @@ server <- function(input, output, session) {
 
     ggplot(b, aes(x = sector, y = savings, fill = sector)) +
       geom_col(width = 0.6) +
-      geom_text(aes(label = sprintf("%.1f ma.kr.  (%.0f%% af %.0f ma.kr. eyðslu)",
-                                    savings, drop, spend)),
-                hjust = -0.05, size = 3.3, colour = col_brown,
+      geom_text(aes(label = sprintf("%.1f ma.kr.  (%.0f%% × %.0f%% = %.1f%%)",
+                                    savings, prod_drop, farm_share, drop)),  # prod% × share% = cons%
+                hjust = -0.05, size = 3.2, colour = col_brown,
                 fontface = "bold", family = "Montserrat") +
       scale_fill_manual(values = fill_vals) +
-      scale_y_continuous(expand = expansion(mult = c(0.08, 0.45))) +
+      scale_y_continuous(expand = expansion(mult = c(0.08, 0.55))) +
       coord_flip() +
       labs(title = "Sparnaður neytenda eftir flokkum",
-           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  CPI-vegin út frá VIS01306 (Hagstofa 2025)  |  Sér verðlækkun fyrir hverja kjöttegund",
+           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  Formúla: framleiðsludrop × framleiðandahlutfall = neytendadrop",
                               sum(b$savings)),
            x = NULL, y = "Ma.kr./ár", fill = NULL) +
       rekon_theme(base_size = 12) +
