@@ -669,25 +669,30 @@ server <- function(input, output, session) {
     total_after    <- sum(sectors$after_eur)
 
     # Consumer savings — CPI-weighted by sector (VIS01306 weights)
-    dairy_spend   <- input$food_spend * (CPI_W_DAIRY / CPI_W_FOOD)
-    egg_spend     <- input$food_spend * (CPI_W_EGGS / CPI_W_FOOD)
-    meat_spend    <- input$food_spend * ((CPI_W_LAMB + CPI_W_BEEF + CPI_W_POULTRY) / CPI_W_FOOD)
-    veg_spend     <- input$food_spend * (CPI_W_VEG / CPI_W_FOOD)
+    dairy_spend   <- input$food_spend * (CPI_W_DAIRY   / CPI_W_FOOD)
+    egg_spend     <- input$food_spend * (CPI_W_EGGS    / CPI_W_FOOD)
+    lamb_spend    <- input$food_spend * (CPI_W_LAMB    / CPI_W_FOOD)
+    beef_spend    <- input$food_spend * (CPI_W_BEEF    / CPI_W_FOOD)
+    poultry_spend <- input$food_spend * (CPI_W_POULTRY / CPI_W_FOOD)
+    veg_spend     <- input$food_spend * (CPI_W_VEG     / CPI_W_FOOD)
 
-    save_dairy  <- dairy_spend * input$consumer_dairy_drop / 100
-    save_meat   <- meat_spend  * input$consumer_meat_drop  / 100
-    save_eggs   <- egg_spend   * input$consumer_egg_drop   / 100
-    save_veg    <- veg_spend   * input$consumer_veg_drop   / 100
+    save_dairy   <- dairy_spend   * input$consumer_dairy_drop / 100
+    save_lamb    <- lamb_spend    * input$consumer_meat_drop  / 100
+    save_beef    <- beef_spend    * input$consumer_meat_drop  / 100
+    save_poultry <- poultry_spend * input$consumer_meat_drop  / 100
+    save_eggs    <- egg_spend     * input$consumer_egg_drop   / 100
+    save_veg     <- veg_spend     * input$consumer_veg_drop   / 100
 
-    consumer_save_isk <- save_dairy + save_meat + save_eggs + save_veg
+    consumer_save_isk <- save_dairy + save_lamb + save_beef + save_poultry + save_eggs + save_veg
     consumer_save_eur <- consumer_save_isk * 1000 / fx
 
     consumer_breakdown <- data.frame(
-      sector  = c("Mjólk & ostur", "Kjöt", "Egg", "Grænmeti"),
-      spend   = c(dairy_spend, meat_spend, egg_spend, veg_spend),
-      drop    = c(input$consumer_dairy_drop, input$consumer_meat_drop,
+      sector  = c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
+      spend   = c(dairy_spend, lamb_spend, beef_spend, poultry_spend, egg_spend, veg_spend),
+      drop    = c(input$consumer_dairy_drop, rep(input$consumer_meat_drop, 3),
                   input$consumer_egg_drop, input$consumer_veg_drop),
-      savings = c(save_dairy, save_meat, save_eggs, save_veg),
+      savings = c(save_dairy, save_lamb, save_beef, save_poultry, save_eggs, save_veg),
+      group   = c("dairy", "meat", "meat", "meat", "eggs", "veg"),
       stringsAsFactors = FALSE
     )
 
@@ -1263,24 +1268,36 @@ server <- function(input, output, session) {
     t <- tariff_loss()
     b <- t$consumer_breakdown
 
-    b$sector <- factor(b$sector, levels = rev(b$sector))
+    # Order: dairy at top, then meat subtypes grouped, then eggs, veg at bottom
+    level_order <- rev(c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"))
+    b$sector <- factor(b$sector, levels = level_order)
+
+    fill_vals <- c(
+      "Mjólk & ostur" = col_p1,
+      "Lambakjöt"     = "#4A5C36",   # Highland Green (dark)
+      "Nautakjöt"     = "#6B8B4A",   # mid green
+      "Alifuglar"     = "#8FAF6A",   # light green
+      "Egg"           = col_anc,
+      "Grænmeti"      = col_moss
+    )
 
     ggplot(b, aes(x = sector, y = savings, fill = sector)) +
       geom_col(width = 0.6) +
-      geom_text(aes(label = sprintf("%.1f ma.kr.\n(%.0f%% af %.0f ma.kr.)",
+      geom_text(aes(label = sprintf("%.1f ma.kr.  (%.0f%% af %.0f ma.kr. eyðslu)",
                                     savings, drop, spend)),
-                hjust = -0.08, size = 3.3, colour = col_brown,
+                hjust = -0.05, size = 3.3, colour = col_brown,
                 fontface = "bold", family = "Montserrat") +
-      scale_fill_manual(values = c(
-        "Mjólk & ostur" = col_p1,
-        "Kjöt"          = col_nordic,
-        "Egg"               = col_anc,
-        "Grænmeti"      = col_moss
-      )) +
-      scale_y_continuous(expand = expansion(mult = c(0, 0.45))) +
+      # Bracket showing meat subtypes share same rate
+      annotate("segment", x = 3.5, xend = 5.5, y = -0.3, yend = -0.3,
+               colour = col_grey, linewidth = 0.4) +
+      annotate("text", x = 4.5, y = -0.5,
+               label = sprintf("Sama verðlækkun: %.0f%%", b$drop[b$group == "meat"][1]),
+               hjust = 0.5, size = 3, colour = col_grey, family = "Lora", fontface = "italic") +
+      scale_fill_manual(values = fill_vals) +
+      scale_y_continuous(expand = expansion(mult = c(0.08, 0.45))) +
       coord_flip() +
-      labs(title = "Sparnãður neytenda eftir flokkum",
-           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  CPI-vegin út frá VIS01306 (Hagstofa 2025)",
+      labs(title = "Sparnaður neytenda eftir flokkum",
+           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  CPI-vegin út frá VIS01306 (Hagstofa 2025)  |  Kjöttegundir sundurliðaðar",
                               sum(b$savings)),
            x = NULL, y = "Ma.kr./ár", fill = NULL) +
       rekon_theme(base_size = 12) +
