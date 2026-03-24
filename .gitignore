@@ -1,3 +1,15 @@
-.Rhistory
+# R and RStudio specific files
 .RData
-.Rproj.user
+.Rhistory
+.Rapp.history
+.Rproj.user/
+.Ruserdata/
+
+# Security and Credentials
+.Renviron
+.env
+*secret*
+
+# OS specific files
+.DS_Store
+Thumbs.db

@@ -4,6 +4,7 @@ library(scales)
 # ══════════════════════════════════════════════════════════════════
 # INTEGRATED CAP + TARIFF IMPACT MODEL FOR ICELAND
 # Rekon / Kári Gautason — March 2026
+# TEST TO SEE IF IT WORKS
 #
 # Unified single-page model:
 #   Tariff removal → price drops → supply response (elasticities)
