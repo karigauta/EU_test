@@ -35,6 +35,17 @@ col_moss     <- "#789A5B"   # Moss Green
 col_consumer <- "#2E86AB"   # Consumer benefit blue
 col_before   <- "#D1D5DB"   # Light grey for "before" bars
 
+# ── CPI weights (VIS01306, Hagstofa Íslands, desember 2025) ─────
+# Source: Vogir fyrir undirvisitölur neysluverðs, COICOP 2018
+# Weights are out of 10,000 total CPI weight; food total = 1,386
+CPI_W_DAIRY    <- 231   # 01141-01147, 01149 (mjólk, ostur, jógúrt — án eggs)
+CPI_W_EGGS     <- 22    # 01148 Egg
+CPI_W_LAMB     <- 59    # 011223 Geita-, lamba- og kindakjöt
+CPI_W_BEEF     <- 54    # 011221 Nautgripakjöt
+CPI_W_POULTRY  <- 48    # 011224 Alifuglakjöt
+CPI_W_VEG      <- 122   # 0117 Grænmeti og hnýði
+CPI_W_FOOD     <- 1386  # 011 Matur (food only, excluding beverages)
+
 # ── Shared theme helper ──────────────────────────────────────────
 rekon_theme <- function(base_size = 13) {
   theme_minimal(base_family = "Montserrat", base_size = base_size) %+replace%
@@ -252,6 +263,9 @@ ui <- navbarPage(
         column(6, plotOutput("balance_chart", height = "340px")),
         column(6, plotOutput("farm_projection", height = "340px"))
       ),
+      fluidRow(
+        column(12, plotOutput("consumer_breakdown_chart", height = "260px"))
+      ),
 
       hr(class = "section-divider"),
 
@@ -429,7 +443,8 @@ ui <- navbarPage(
                         min = 15, max = 60, value = 45, step = 1, post = "%"),
             helpText("Finnland nautakjöt: \u221238% til \u221243%. Lambakjöt líklega hærra."),
             sliderInput("beef_drop", "Nautakjöt \u2014 ver\u00f0l\u00e6kkun",
-                        min = 15, max = 55, value = 40, step = 1, post = "%")
+                        min = 15, max = 55, value = 40, step = 1, post = "%"),
+            helpText("ANR tollverndarskýrsla 2020: Nautakjöt 35–42% vegin tollvernd. Uppboðsverð 2019: 683 ISK/kg.")
           ),
           column(6,
             sliderInput("egg_drop", "Egg/alifuglar \u2014 ver\u00f0l\u00e6kkun",
@@ -437,7 +452,7 @@ ui <- navbarPage(
             helpText("Finnland egg: \u221265% til \u221268%. \u00cdsland l\u00edkl. l\u00e6gra v/ flutnkostn."),
             sliderInput("veg_drop", "Gr\u00e6nmeti \u2014 ver\u00f0l\u00e6kkun",
                         min = 5, max = 40, value = 20, step = 1, post = "%"),
-            helpText("Hluti r\u00e6ktar \u00ed gr\u00f3\u00f0urh\u00fasum m/ jar\u00f0varma. Minni samkeppnisáhrif.")
+            helpText("EES-bókun 3 þýðir að flest grænmeti er þegar tollfrítt. Gróðurhúsarækt (tómatar, agúrkur) er jarðhitaknúin og á litla samkeppni. Lágt sjálfgefið gildi (12%) byggist á skýrslu ANR 2020.")
           )
         )
       ),
@@ -476,12 +491,24 @@ ui <- navbarPage(
         h4("Neytendur og b\u00fast\u00f6\u00f0vun", style = "margin-top:0;"),
         fluidRow(
           column(6,
-            sliderInput("food_spend", "Matarútgjöld heimila (ma.kr./\u00e1r)",
-                        min = 100, max = 250, value = 170, step = 10, post = " ma.kr."),
-            helpText("Hagstofa: ~170 ma.kr. Matvælaverð \u00e1 \u00cdsland i 48% yfir ESB-me\u00f0altali."),
-            sliderInput("consumer_drop", "\u00c1ætlu\u00f0 matvælaverðl\u00e6kkun (%)",
-                        min = 5, max = 30, value = 15, step = 1, post = "%"),
-            helpText("Finnland: \u221211%. \u00cdsland l\u00edklega meira (st\u00e6rri tollgat).")
+            sliderInput("food_spend", "Matarútgjöld heimila (ma.kr./ár)",
+                        min = 180, max = 400, value = 270, step = 10, post = " ma.kr."),
+            helpText("Hagstofa THJ02105: 233 ma.kr. (2020 fastaverð). Við 2026 verðlag ~270–290 ma.kr. Heildarneysla á mat og drykkjarvörum."),
+            div(class = "context-box",
+              HTML("<strong>CPI-vegið mat:</strong> Sparnaður reiknaður með vogum úr VIS01306 (Hagstofa 2025) og tollverndarstuðlum úr skýrslu ANR (2020). Grænmeti er að mestu þegar tollfrítt undir EES-bókun 3.")
+            ),
+            sliderInput("consumer_dairy_drop", "Mjólk & ostur — verðlækkun (%)",
+                        min = 10, max = 40, value = 25, step = 1, post = "%"),
+            helpText("ANR 2020: Ostur 21–34% tollvernd (vegin). Fljótandi mjólkurvörur lægra. Meðaltal ~25%."),
+            sliderInput("consumer_meat_drop", "Kjöt (lamb, nautgr., alifuglar) — verðlækkun (%)",
+                        min = 20, max = 55, value = 38, step = 1, post = "%"),
+            helpText("ANR 2020: Nautakjöt 35–42%, alifuglar 43–57%, lambakjöt flóknara (Ísland er útflutningsland). Meðaltal ~38%."),
+            sliderInput("consumer_egg_drop", "Egg — verðlækkun (%)",
+                        min = 25, max = 65, value = 50, step = 1, post = "%"),
+            helpText("Há tollvernd á eggjum samkvæmt tollskrá. Samræmist framleiðendahlutfalli (~55%)."),
+            sliderInput("consumer_veg_drop", "Grænmeti — verðlækkun (%)",
+                        min = 3, max = 20, value = 10, step = 1, post = "%"),
+            helpText("Grænmeti er að mestu þegar tollfrítt undir EES-bókun 3. Gróðurhúsarækt (tómatar, agúrkur) er innlend og jarðhitaknúin — lítil samkeppnisáhrif.")
           ),
           column(6,
             sliderInput("farm_exit_10y", "B\u00fast\u00f6\u00f0vun \u00e1 10 \u00e1rum (%)",
@@ -641,9 +668,28 @@ server <- function(input, output, session) {
     total_before   <- sum(sectors$value_eur)
     total_after    <- sum(sectors$after_eur)
 
-    # Consumer savings
-    consumer_save_isk <- input$food_spend * input$consumer_drop / 100
+    # Consumer savings — CPI-weighted by sector (VIS01306 weights)
+    dairy_spend   <- input$food_spend * (CPI_W_DAIRY / CPI_W_FOOD)
+    egg_spend     <- input$food_spend * (CPI_W_EGGS / CPI_W_FOOD)
+    meat_spend    <- input$food_spend * ((CPI_W_LAMB + CPI_W_BEEF + CPI_W_POULTRY) / CPI_W_FOOD)
+    veg_spend     <- input$food_spend * (CPI_W_VEG / CPI_W_FOOD)
+
+    save_dairy  <- dairy_spend * input$consumer_dairy_drop / 100
+    save_meat   <- meat_spend  * input$consumer_meat_drop  / 100
+    save_eggs   <- egg_spend   * input$consumer_egg_drop   / 100
+    save_veg    <- veg_spend   * input$consumer_veg_drop   / 100
+
+    consumer_save_isk <- save_dairy + save_meat + save_eggs + save_veg
     consumer_save_eur <- consumer_save_isk * 1000 / fx
+
+    consumer_breakdown <- data.frame(
+      sector  = c("Mj\u00f3lk & ostur", "Kj\u00f6t", "Egg", "Gr\u00e6nmeti"),
+      spend   = c(dairy_spend, meat_spend, egg_spend, veg_spend),
+      drop    = c(input$consumer_dairy_drop, input$consumer_meat_drop,
+                  input$consumer_egg_drop, input$consumer_veg_drop),
+      savings = c(save_dairy, save_meat, save_eggs, save_veg),
+      stringsAsFactors = FALSE
+    )
 
     # Farm projection
     farms_after <- round(input$farms_now * (1 - input$farm_exit_10y / 100))
@@ -662,6 +708,7 @@ server <- function(input, output, session) {
       total_after = total_after,
       consumer_save_eur = consumer_save_eur,
       consumer_save_isk = consumer_save_isk,
+      consumer_breakdown = consumer_breakdown,
       farms_after = farms_after,
       farms_lost = farms_lost,
       farm_trajectory = farm_trajectory,
@@ -1209,6 +1256,38 @@ server <- function(input, output, session) {
       theme(
         plot.title = element_text(face = "bold", colour = col_brown, size = 14),
         panel.grid.major.x = element_line(colour = "#E5E7EB", linewidth = 0.3)
+      )
+  }, res = 110, bg = "transparent")
+
+  output$consumer_breakdown_chart <- renderPlot({
+    t <- tariff_loss()
+    b <- t$consumer_breakdown
+
+    b$sector <- factor(b$sector, levels = rev(b$sector))
+
+    ggplot(b, aes(x = sector, y = savings, fill = sector)) +
+      geom_col(width = 0.6) +
+      geom_text(aes(label = sprintf("%.1f ma.kr.\n(%.0f%% af %.0f ma.kr.)",
+                                    savings, drop, spend)),
+                hjust = -0.08, size = 3.3, colour = col_brown,
+                fontface = "bold", family = "Montserrat") +
+      scale_fill_manual(values = c(
+        "Mj\u00f3lk & ostur" = col_p1,
+        "Kj\u00f6t"          = col_nordic,
+        "Egg"               = col_anc,
+        "Gr\u00e6nmeti"      = col_moss
+      )) +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.45))) +
+      coord_flip() +
+      labs(title = "Sparn\u00e3\u00f0ur neytenda eftir flokkum",
+           subtitle = sprintf("Samtals %.1f ma.kr./\u00e1r  |  CPI-vegin \u00fat fr\u00e1 VIS01306 (Hagstofa 2025)",
+                              sum(b$savings)),
+           x = NULL, y = "Ma.kr./\u00e1r", fill = NULL) +
+      rekon_theme(base_size = 12) +
+      theme(
+        legend.position = "none",
+        panel.grid.major.y = element_blank(),
+        axis.text.y = element_text(size = 11)
       )
   }, res = 110, bg = "transparent")
 
