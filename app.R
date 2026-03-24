@@ -4,7 +4,6 @@ library(scales)
 # ══════════════════════════════════════════════════════════════════
 # INTEGRATED CAP + TARIFF IMPACT MODEL FOR ICELAND
 # Rekon / Kári Gautason — March 2026
-# TEST TO SEE IF IT WORKS
 #
 # Unified single-page model:
 #   Tariff removal → price drops → supply response (elasticities)
@@ -19,14 +18,12 @@ library(scales)
 # ══════════════════════════════════════════════════════════════════
 
 # ── Rekon Brand Palette ──────────────────────────────────────────
-col_sky      <- "#4A90E2"   # Sky Blue (primary brand color)
 col_green    <- "#4A5C36"   # Highland Green
 col_cloud    <- "#F3F4F6"   # Cloud White (backgrounds)
 col_grey     <- "#6B7280"   # Mountain Grey
 col_brown    <- "#57534E"   # Soil Brown
 col_red      <- "#A12B26"   # Signal Red
 col_p1       <- "#4A90E2"   # Sky Blue — Pillar 1 / EU
-col_nordic   <- "#4A5C36"   # Highland Green — Nordic Aid
 col_anc      <- "#E2B14A"   # Lichen Gold — ANC
 col_gap      <- "#A12B26"   # Signal Red — Gap / Loss
 col_accent   <- "#57534E"   # Soil Brown — totals/neutral
@@ -48,6 +45,18 @@ CPI_W_FOOD     <- 1386  # 011 Matur (food only, excluding beverages)
 
 APP_VERSION <- "v1.4"
 
+# ── Value chain splits (non-farmer portion, proportions summing to 1) ──────
+# Used in farm_share_pie renderPlot. Defined globally to avoid re-allocation
+# on every slider interaction. Sources: AHDB 2024, USDA ERS, OECD Iceland 2025.
+CHAIN_SPLITS <- list(
+  "Mjólk"     = c("Vinnsla (Mjólkursamsalan)" = 0.42, "Pökkun" = 0.13, "Smásala" = 0.45),
+  "Lambakjöt" = c("Slátrun (SS/HB)" = 0.38, "Dreifing" = 0.12, "Smásala" = 0.50),
+  "Nautakjöt" = c("Slátrun" = 0.32, "Dreifing" = 0.18, "Smásala" = 0.50),
+  "Alifuglar" = c("Vinnsla" = 0.38, "Pökkun" = 0.12, "Smásala" = 0.50),
+  "Egg"       = c("Pökkun" = 0.28, "Dreifing" = 0.12, "Smásala" = 0.60),
+  "Grænmeti"  = c("Vinnsla/Pökkun" = 0.22, "Dreifing" = 0.18, "Smásala" = 0.60)
+)
+
 # ── Shared theme helper ──────────────────────────────────────────
 rekon_theme <- function(base_size = 13) {
   theme_minimal(base_family = "Montserrat", base_size = base_size) %+replace%
@@ -59,6 +68,14 @@ rekon_theme <- function(base_size = 13) {
       axis.text.y = element_text(colour = col_grey),
       plot.background = element_rect(fill = "transparent", colour = NA),
       panel.background = element_rect(fill = "transparent", colour = NA)
+    )
+}
+
+rekon_theme_flip <- function(base_size = 12) {
+  rekon_theme(base_size) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      axis.text.y        = element_text(size = 11, colour = col_grey)
     )
 }
 
@@ -550,6 +567,31 @@ ui <- navbarPage(
 # ══════════════════════════════════════════════════════════════════
 server <- function(input, output, session) {
 
+  # ── Shared helpers ────────────────────────────────────────────
+  compute_cap <- function(ha, milk, ewes, cattle) {
+    p1         <- ha     * input$p1_rate     / 1e6
+    milk_pay   <- milk   * 1e6 * input$milk_rate / 1e6
+    sheep_pay  <- ewes   * input$ewe_rate    / 1e6
+    cattle_pay <- cattle * input$cattle_rate / 1e6
+    nordic     <- milk_pay + sheep_pay + cattle_pay
+    anc_total  <- ha * input$anc_rate / 1e6
+    anc_eu     <- anc_total * input$eu_cofinance / 100
+    anc_is     <- anc_total * (1 - input$eu_cofinance / 100)
+    total      <- p1 + nordic + anc_total
+    list(
+      p1 = p1, milk = milk_pay, sheep = sheep_pay, cattle = cattle_pay,
+      nordic    = nordic,
+      anc_total = anc_total, anc_eu = anc_eu, anc_is = anc_is,
+      total     = total,
+      eu_pays      = p1 + anc_eu,
+      iceland_pays = nordic + anc_is
+    )
+  }
+
+  badge <- function(label, color) {
+    sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
+  }
+
   # ────────────────────────────────────────────────────────────────
   # REACTIVE: BASELINE — current production numbers
   # ────────────────────────────────────────────────────────────────
@@ -577,9 +619,9 @@ server <- function(input, output, session) {
   # and total payments shrink with production.
   # ────────────────────────────────────────────────────────────────
   current_system <- reactive({
-    b <- baseline()
-    s <- shock()
-    t <- tariff_loss()
+    b  <- baseline()
+    s  <- shock()
+    fe <- farm_exit()
 
     # The fixed pot stays the same regardless of production changes
     fixed_pot_eur <- b$current_eur  # €M — doesn't change
@@ -602,7 +644,7 @@ server <- function(input, output, session) {
     support_per_litre_after <- (fixed_pot_eur * dairy_share) / (s$new_milk)
     support_per_ewe_after   <- (fixed_pot_eur * lamb_share * 1e6) / s$new_ewes
     support_per_head_after  <- (fixed_pot_eur * beef_share * 1e6) / s$new_cattle
-    farms_after <- t$farms_after
+    farms_after <- fe$farms_after
     support_per_farm_after  <- fixed_pot_eur * 1e6 / farms_after
 
     # The "cushion effect" — how much more each surviving unit gets
@@ -666,89 +708,78 @@ server <- function(input, output, session) {
   })
 
   # ────────────────────────────────────────────────────────────────
-  # REACTIVE: TARIFF LOSS — revenue losses from price drops
+  # REACTIVE: REVENUE SHOCK — sector price drops → revenue losses
+  # Depends on: *_val, *_drop, eur_isk
   # ────────────────────────────────────────────────────────────────
-  tariff_loss <- reactive({
-    fx <- input$eur_isk
-    sectors <- data.frame(
-      sector = c("Mjólkurvörur", "Kindakjöt", "Nautakjöt", "Egg/alifuglar", "Grænmeti"),
-      value_isk = c(input$dairy_val, input$lamb_val, input$beef_val,
-                    input$egg_val, input$veg_val),
-      drop_pct = c(input$dairy_drop, input$lamb_drop, input$beef_drop,
-                   input$egg_drop, input$veg_drop),
-      stringsAsFactors = FALSE
+  revenue_shock <- reactive({
+    fx        <- input$eur_isk
+    value_isk <- c(input$dairy_val, input$lamb_val, input$beef_val,
+                   input$egg_val,   input$veg_val)
+    drop_pct  <- c(input$dairy_drop, input$lamb_drop, input$beef_drop,
+                   input$egg_drop,   input$veg_drop)
+    value_eur <- value_isk * 1000 / fx
+    loss_eur  <- value_eur * drop_pct / 100
+    after_eur <- value_eur - loss_eur
+    list(
+      sectors = data.frame(
+        sector    = c("Mjólkurvörur","Kindakjöt","Nautakjöt","Egg/alifuglar","Grænmeti"),
+        value_isk = value_isk,
+        drop_pct  = drop_pct,
+        value_eur = value_eur,
+        loss_eur  = loss_eur,
+        after_eur = after_eur
+      ),
+      total_loss_eur = sum(loss_eur),
+      total_before   = sum(value_eur),
+      fx             = fx
     )
-    sectors$value_eur <- sectors$value_isk * 1000 / fx
-    sectors$loss_eur  <- sectors$value_eur * sectors$drop_pct / 100
-    sectors$after_eur <- sectors$value_eur - sectors$loss_eur
+  })
 
-    total_loss_eur <- sum(sectors$loss_eur)
-    total_before   <- sum(sectors$value_eur)
-    total_after    <- sum(sectors$after_eur)
-
-    # Consumer savings — CPI-weighted by sector (VIS01306 weights)
-    dairy_spend   <- input$food_spend * (CPI_W_DAIRY   / CPI_W_FOOD)
-    egg_spend     <- input$food_spend * (CPI_W_EGGS    / CPI_W_FOOD)
-    lamb_spend    <- input$food_spend * (CPI_W_LAMB    / CPI_W_FOOD)
-    beef_spend    <- input$food_spend * (CPI_W_BEEF    / CPI_W_FOOD)
-    poultry_spend <- input$food_spend * (CPI_W_POULTRY / CPI_W_FOOD)
-    veg_spend     <- input$food_spend * (CPI_W_VEG     / CPI_W_FOOD)
-
-    # Derived consumer price drops = producer drop × farm share
-    # (farm share = fraction of retail price attributable to farm gate)
-    cons_dairy_drop   <- input$dairy_drop * input$farm_share_dairy   / 100
-    cons_lamb_drop    <- input$lamb_drop  * input$farm_share_lamb    / 100
-    cons_beef_drop    <- input$beef_drop  * input$farm_share_beef    / 100
-    cons_poultry_drop <- input$egg_drop   * input$farm_share_poultry / 100  # egg_drop = "Egg/alifuglar" producer proxy
-    cons_egg_drop     <- input$egg_drop   * input$farm_share_eggs    / 100
-    cons_veg_drop     <- input$veg_drop   * input$farm_share_veg     / 100
-
-    save_dairy   <- dairy_spend   * cons_dairy_drop   / 100
-    save_lamb    <- lamb_spend    * cons_lamb_drop    / 100
-    save_beef    <- beef_spend    * cons_beef_drop    / 100
-    save_poultry <- poultry_spend * cons_poultry_drop / 100
-    save_eggs    <- egg_spend     * cons_egg_drop     / 100
-    save_veg     <- veg_spend     * cons_veg_drop     / 100
-
-    consumer_save_isk <- save_dairy + save_lamb + save_beef + save_poultry + save_eggs + save_veg
-    consumer_save_eur <- consumer_save_isk * 1000 / fx
-
-    consumer_breakdown <- data.frame(
-      sector        = c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
-      spend         = c(dairy_spend, lamb_spend, beef_spend, poultry_spend, egg_spend, veg_spend),
-      prod_drop     = c(input$dairy_drop, input$lamb_drop, input$beef_drop,
-                        input$egg_drop, input$egg_drop, input$veg_drop),
-      farm_share    = c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
-                        input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg),
-      drop          = c(cons_dairy_drop, cons_lamb_drop, cons_beef_drop,
-                        cons_poultry_drop, cons_egg_drop, cons_veg_drop),
-      savings       = c(save_dairy, save_lamb, save_beef, save_poultry, save_eggs, save_veg),
-      group         = c("dairy", "meat", "meat", "meat", "eggs", "veg"),
-      stringsAsFactors = FALSE
+  # ────────────────────────────────────────────────────────────────
+  # REACTIVE: CONSUMER SAVINGS — CPI-weighted savings from price drops
+  # Depends on: food_spend, *_drop, farm_share_*, eur_isk
+  # ────────────────────────────────────────────────────────────────
+  consumer_savings <- reactive({
+    fx      <- input$eur_isk
+    spends  <- input$food_spend *
+               c(CPI_W_DAIRY, CPI_W_LAMB, CPI_W_BEEF,
+                 CPI_W_POULTRY, CPI_W_EGGS, CPI_W_VEG) / CPI_W_FOOD
+    drops_p <- c(input$dairy_drop, input$lamb_drop, input$beef_drop,
+                 input$egg_drop, input$egg_drop, input$veg_drop)
+    shares  <- c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
+                 input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg)
+    cons_drops <- drops_p * shares / 100
+    savings    <- spends * cons_drops / 100
+    list(
+      consumer_breakdown = data.frame(
+        sector     = c("Mjólk & ostur","Lambakjöt","Nautakjöt","Alifuglar","Egg","Grænmeti"),
+        spend      = spends,
+        prod_drop  = drops_p,
+        farm_share = shares,
+        drop       = cons_drops,
+        savings    = savings,
+        group      = c("dairy","meat","meat","meat","eggs","veg")
+      ),
+      consumer_save_isk = sum(savings),
+      consumer_save_eur = sum(savings) * 1000 / fx
     )
+  })
 
-    # Farm projection
+  # ────────────────────────────────────────────────────────────────
+  # REACTIVE: FARM EXIT — trajectory projection
+  # Depends on: farms_now, farm_exit_10y ONLY
+  # ────────────────────────────────────────────────────────────────
+  farm_exit <- reactive({
     farms_after <- round(input$farms_now * (1 - input$farm_exit_10y / 100))
-    farms_lost  <- input$farms_now - farms_after
     annual_exit <- 1 - (1 - input$farm_exit_10y / 100)^(1/10)
     years <- 0:15
-    farm_trajectory <- data.frame(
-      year = years,
-      farms = round(input$farms_now * (1 - annual_exit)^years)
-    )
-
     list(
-      sectors = sectors,
-      total_loss_eur = total_loss_eur,
-      total_before = total_before,
-      total_after = total_after,
-      consumer_save_eur = consumer_save_eur,
-      consumer_save_isk = consumer_save_isk,
-      consumer_breakdown = consumer_breakdown,
-      farms_after = farms_after,
-      farms_lost = farms_lost,
-      farm_trajectory = farm_trajectory,
-      fx = fx
+      farms_after     = farms_after,
+      farms_lost      = input$farms_now - farms_after,
+      farm_trajectory = data.frame(
+        year  = years,
+        farms = round(input$farms_now * (1 - annual_exit)^years)
+      )
     )
   })
 
@@ -757,25 +788,7 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
   cap_baseline <- reactive({
     b <- baseline()
-    p1       <- b$ha * input$p1_rate / 1e6
-    milk_pay <- b$milk * 1e6 * input$milk_rate / 1e6
-    sheep_pay <- b$ewes * input$ewe_rate / 1e6
-    cattle_pay <- b$cattle * input$cattle_rate / 1e6
-    nordic   <- milk_pay + sheep_pay + cattle_pay
-    anc_total <- b$ha * input$anc_rate / 1e6
-    anc_eu    <- anc_total * input$eu_cofinance / 100
-    anc_is    <- anc_total * (1 - input$eu_cofinance / 100)
-    total    <- p1 + nordic + anc_total
-    eu_pays      <- p1 + anc_eu
-    iceland_pays <- nordic + anc_is
-
-    list(
-      p1 = p1, milk = milk_pay, sheep = sheep_pay, cattle = cattle_pay,
-      nordic = nordic,
-      anc_total = anc_total, anc_eu = anc_eu, anc_is = anc_is,
-      total = total,
-      eu_pays = eu_pays, iceland_pays = iceland_pays
-    )
+    compute_cap(b$ha, b$milk, b$ewes, b$cattle)
   })
 
   # ────────────────────────────────────────────────────────────────
@@ -783,25 +796,7 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
   cap_adjusted <- reactive({
     s <- shock()
-    p1         <- s$new_ha * input$p1_rate / 1e6
-    milk_pay   <- s$new_milk * 1e6 * input$milk_rate / 1e6
-    sheep_pay  <- s$new_ewes * input$ewe_rate / 1e6
-    cattle_pay <- s$new_cattle * input$cattle_rate / 1e6
-    nordic     <- milk_pay + sheep_pay + cattle_pay
-    anc_total  <- s$new_ha * input$anc_rate / 1e6
-    anc_eu     <- anc_total * input$eu_cofinance / 100
-    anc_is     <- anc_total * (1 - input$eu_cofinance / 100)
-    total      <- p1 + nordic + anc_total
-    eu_pays      <- p1 + anc_eu
-    iceland_pays <- nordic + anc_is
-
-    list(
-      p1 = p1, milk = milk_pay, sheep = sheep_pay, cattle = cattle_pay,
-      nordic = nordic,
-      anc_total = anc_total, anc_eu = anc_eu, anc_is = anc_is,
-      total = total,
-      eu_pays = eu_pays, iceland_pays = iceland_pays
-    )
+    compute_cap(s$new_ha, s$new_milk, s$new_ewes, s$new_cattle)
   })
 
   # ────────────────────────────────────────────────────────────────
@@ -809,11 +804,11 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
 
   output$metric_loss <- renderUI({
-    t <- tariff_loss()
+    rs <- revenue_shock()
     tagList(
       div(class = "metric-value", style = paste0("color:", col_red),
-          sprintf("−€%.0fM", t$total_loss_eur)),
-      div(class = "metric-sub", sprintf("%.0f%% af framleiðsluvermi", t$total_loss_eur / t$total_before * 100))
+          sprintf("−€%.0fM", rs$total_loss_eur)),
+      div(class = "metric-sub", sprintf("%.0f%% af framleiðsluvermi", rs$total_loss_eur / rs$total_before * 100))
     )
   })
 
@@ -831,11 +826,11 @@ server <- function(input, output, session) {
 
   output$metric_net <- renderUI({
     ca <- cap_adjusted()
-    t <- tariff_loss()
+    rs <- revenue_shock()
     b <- baseline()
     # Farmers lose: (1) revenue from price drops + (2) current Búvörusamningar
     # Farmers gain: CAP payments
-    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    total_farmer_loss <- rs$total_loss_eur + b$current_eur
     net <- ca$total - total_farmer_loss
     col <- if (net >= 0) col_green else col_red
     sign <- if (net >= 0) "+" else "−"
@@ -844,17 +839,17 @@ server <- function(input, output, session) {
           sprintf("%s€%.0fM", sign, abs(net))),
       div(class = "metric-sub", style = paste0("color:", col_grey),
           sprintf("CAP €%.0fM vs. tap €%.0fM + núv. stuðn. €%.0fM",
-                  ca$total, t$total_loss_eur, b$current_eur))
+                  ca$total, rs$total_loss_eur, b$current_eur))
     )
   })
 
   output$metric_consumer <- renderUI({
-    t <- tariff_loss()
+    con <- consumer_savings()
     tagList(
       div(class = "metric-value", style = paste0("color:", col_moss),
-          sprintf("+€%.0fM", t$consumer_save_eur)),
+          sprintf("+€%.0fM", con$consumer_save_eur)),
       div(class = "metric-sub", style = paste0("color:", col_moss),
-          sprintf("%.0f ma.kr./ár lægra matarverð", t$consumer_save_isk))
+          sprintf("%.0f ma.kr./ár lægra matarverð", con$consumer_save_isk))
     )
   })
 
@@ -884,11 +879,11 @@ server <- function(input, output, session) {
     cs <- current_system()
     ca <- cap_adjusted()
     b <- baseline()
-    t <- tariff_loss()
+    fe <- farm_exit()
     # Under current system, surviving farms keep the full pot
     # Under CAP, surviving farms get reduced total (production-linked)
     # The difference is the "cushion lost"
-    cap_per_farm <- ca$total * 1e6 / t$farms_after
+    cap_per_farm <- ca$total * 1e6 / fe$farms_after
     cushion_lost_per_farm <- cs$per_farm_after - cap_per_farm
     tagList(
       div(class = "metric-value", style = paste0("color:", col_red),
@@ -905,14 +900,13 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
 
   output$price_impact_chart <- renderPlot({
-    t <- tariff_loss()
-    s <- t$sectors
+    rs <- revenue_shock()
+    s <- rs$sectors
 
     df <- data.frame(
       sector = factor(rep(s$sector, 2), levels = rev(s$sector)),
       type = rep(c("Fyrir", "Eftir"), each = nrow(s)),
-      value = c(s$value_eur, s$after_eur),
-      stringsAsFactors = FALSE
+      value = c(s$value_eur, s$after_eur)
     )
     df$type <- factor(df$type, levels = c("Fyrir", "Eftir"))
 
@@ -934,14 +928,12 @@ server <- function(input, output, session) {
       coord_flip() +
       labs(title = "Verðáhrif á framleiðendur eftir geirum",
            subtitle = sprintf("Heildar tekjutap: €%.0fM  |  Grátt = núverandi  |  Rauðt = eftir ESB-aðild",
-                              t$total_loss_eur),
+                              rs$total_loss_eur),
            x = NULL, y = NULL, fill = NULL) +
-      rekon_theme() +
+      rekon_theme_flip() +
       theme(
         legend.position = "top",
-        legend.text = element_text(size = 10),
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_text(size = 11)
+        legend.text     = element_text(size = 10)
       )
   }, res = 110, bg = "transparent")
 
@@ -961,8 +953,7 @@ server <- function(input, output, session) {
     df <- data.frame(
       category = factor(rep(categories, 2), levels = rev(categories)),
       type = factor(rep(c("Fyrir", "Eftir"), each = 4), levels = c("Fyrir", "Eftir")),
-      value = c(before_vals, after_vals),
-      stringsAsFactors = FALSE
+      value = c(before_vals, after_vals)
     )
 
     ann <- data.frame(
@@ -984,12 +975,10 @@ server <- function(input, output, session) {
            subtitle = sprintf("Mjólk: −%.0f%%  |  Sauðfé: −%.0f%%  |  Nautgr.: −%.0f%%  |  Land: −%.0f%%",
                               s$dairy_pct_change, s$sheep_pct_change, s$beef_pct_change, s$land_pct_change),
            x = NULL, y = NULL, fill = NULL) +
-      rekon_theme() +
+      rekon_theme_flip() +
       theme(
         legend.position = "top",
-        legend.text = element_text(size = 10),
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_text(size = 11)
+        legend.text     = element_text(size = 10)
       )
   }, res = 110, bg = "transparent")
 
@@ -1001,7 +990,6 @@ server <- function(input, output, session) {
     b <- baseline()
     cs <- current_system()
     ca <- cap_adjusted()
-    t <- tariff_loss()
 
     # Compare per-farm support under both systems at different exit levels
     exit_levels <- seq(0, 50, by = 5)  # 0% to 50% farm exit
@@ -1074,9 +1062,9 @@ server <- function(input, output, session) {
     cs <- current_system()
     ca <- cap_adjusted()
     b <- baseline()
-    t <- tariff_loss()
+    fe <- farm_exit()
 
-    cap_per_farm <- ca$total * 1e6 / t$farms_after
+    cap_per_farm <- ca$total * 1e6 / fe$farms_after
 
     HTML(sprintf('
       <div style="margin:18px 0; font-family:Montserrat,sans-serif;">
@@ -1126,8 +1114,8 @@ server <- function(input, output, session) {
       col_p1, b$current_eur,  # same pot after exit!
       col_red, ca$total,
       format(b$farms, big.mark = "."),
-      format(t$farms_after, big.mark = "."),
-      format(t$farms_after, big.mark = "."),
+      format(fe$farms_after, big.mark = "."),
+      format(fe$farms_after, big.mark = "."),
       col_cloud,
       format(round(cs$per_farm_now), big.mark = "."),
       col_moss, format(round(cs$per_farm_after), big.mark = "."),
@@ -1160,15 +1148,14 @@ server <- function(input, output, session) {
                 cb$total, ca$total)
 
     fills <- c(col_before, col_p1,
-               col_before, col_nordic,
+               col_before, col_green,
                col_before, col_anc,
                col_before, col_accent)
 
     df <- data.frame(
       label = factor(labels, levels = labels),
       value = values,
-      fill = fills,
-      stringsAsFactors = FALSE
+      fill = fills
     )
 
     ggplot(df, aes(x = label, y = value, fill = fill)) +
@@ -1224,12 +1211,13 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
 
   output$balance_chart <- renderPlot({
-    t <- tariff_loss()
+    rs  <- revenue_shock()
+    con <- consumer_savings()
     ca <- cap_adjusted()
     b <- baseline()
 
     # Total farmer loss = revenue loss from tariffs + loss of current support
-    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    total_farmer_loss <- rs$total_loss_eur + b$current_eur
     net <- ca$total - total_farmer_loss
 
     df <- data.frame(
@@ -1239,7 +1227,7 @@ server <- function(input, output, session) {
                      levels = c("Tekjutap\n(verðlækkun)", "Tapaður\nstuðn. pottur",
                                 "CAP\nleiðrétt", "Nettó staða\nbænda",
                                 "Sparnaður\nneytenda")),
-      value = c(-t$total_loss_eur, -b$current_eur, ca$total, net, t$consumer_save_eur),
+      value = c(-rs$total_loss_eur, -b$current_eur, ca$total, net, con$consumer_save_eur),
       fill  = c(col_red, col_anc, col_green,
                 if (net >= 0) col_moss else col_gap, col_consumer)
     )
@@ -1255,7 +1243,7 @@ server <- function(input, output, session) {
                          expand = expansion(mult = c(0.15, 0.15))) +
       labs(title = "Heildarjafnvægi bænda",
            subtitle = sprintf("Tap: €%.0fM (verð) + €%.0fM (stuðn.) = €%.0fM  |  CAP: €%.0fM  |  Nettó: %s€%.0fM",
-                              t$total_loss_eur, b$current_eur, total_farmer_loss,
+                              rs$total_loss_eur, b$current_eur, total_farmer_loss,
                               ca$total,
                               if (net >= 0) "+" else "−", abs(net)),
            x = NULL, y = NULL) +
@@ -1267,8 +1255,8 @@ server <- function(input, output, session) {
   }, res = 110, bg = "transparent")
 
   output$farm_projection <- renderPlot({
-    t <- tariff_loss()
-    df <- t$farm_trajectory
+    fe <- farm_exit()
+    df <- fe$farm_trajectory
 
     ggplot(df, aes(x = year, y = farms)) +
       geom_area(fill = col_red, alpha = 0.12) +
@@ -1286,7 +1274,7 @@ server <- function(input, output, session) {
       labs(title = "Spá: fjöldi búa eftir aðild",
            subtitle = sprintf("Frá %s í %s á 10 árum  |  Byggð á reynslu Finnlands",
                               format(input$farms_now, big.mark = "."),
-                              format(t$farms_after, big.mark = ".")),
+                              format(fe$farms_after, big.mark = ".")),
            x = NULL, y = NULL) +
       rekon_theme(base_size = 12) +
       theme(
@@ -1296,8 +1284,8 @@ server <- function(input, output, session) {
   }, res = 110, bg = "transparent")
 
   output$consumer_breakdown_chart <- renderPlot({
-    t <- tariff_loss()
-    b <- t$consumer_breakdown
+    con <- consumer_savings()
+    b   <- con$consumer_breakdown
 
     # Order: dairy at top, then meat subtypes grouped, then eggs, veg at bottom
     level_order <- rev(c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"))
@@ -1325,12 +1313,8 @@ server <- function(input, output, session) {
            subtitle = sprintf("Samtals %.1f ma.kr./ár  |  Formúla: framleiðsludrop × framleiðandahlutfall = neytendadrop",
                               sum(b$savings)),
            x = NULL, y = "Ma.kr./ár", fill = NULL) +
-      rekon_theme(base_size = 12) +
-      theme(
-        legend.position = "none",
-        panel.grid.major.y = element_blank(),
-        axis.text.y = element_text(size = 11)
-      )
+      rekon_theme_flip(base_size = 12) +
+      theme(legend.position = "none")
   }, res = 110, bg = "transparent")
 
   # ────────────────────────────────────────────────────────────────
@@ -1340,17 +1324,6 @@ server <- function(input, output, session) {
   # Sources: AHDB 2024, USDA ERS, OECD Iceland 2025
   # ────────────────────────────────────────────────────────────────
   output$farm_share_pie <- renderPlot({
-    # Fixed value-chain splits for the non-farmer share (proportions summing to 1).
-    # Based on AHDB supply-chain margins, USDA ERS price spread reports.
-    chain_splits <- list(
-      "Mjólk"     = c("Vinnsla (Mjólkursamsalan)" = 0.42, "Pökkun" = 0.13, "Smásala" = 0.45),
-      "Lambakjöt" = c("Slátrun (SS/HB)" = 0.38, "Dreifing" = 0.12, "Smásala" = 0.50),
-      "Nautakjöt" = c("Slátrun" = 0.32, "Dreifing" = 0.18, "Smásala" = 0.50),
-      "Alifuglar" = c("Vinnsla" = 0.38, "Pökkun" = 0.12, "Smásala" = 0.50),
-      "Egg"       = c("Pökkun" = 0.28, "Dreifing" = 0.12, "Smásala" = 0.60),
-      "Grænmeti"  = c("Vinnsla/Pökkun" = 0.22, "Dreifing" = 0.18, "Smásala" = 0.60)
-    )
-
     farm_shares <- c(
       input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
       input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg
@@ -1366,15 +1339,13 @@ server <- function(input, output, session) {
       rows[[length(rows) + 1]] <- data.frame(
         product   = prod,
         component = "Framleiðandi",
-        value     = fs,
-        stringsAsFactors = FALSE
+        value     = fs
       )
-      for (comp in names(chain_splits[[prod]])) {
+      for (comp in names(CHAIN_SPLITS[[prod]])) {
         rows[[length(rows) + 1]] <- data.frame(
           product   = prod,
           component = comp,
-          value     = rem * chain_splits[[prod]][[comp]],
-          stringsAsFactors = FALSE
+          value     = rem * CHAIN_SPLITS[[prod]][[comp]]
         )
       }
     }
@@ -1465,17 +1436,15 @@ server <- function(input, output, session) {
   # ────────────────────────────────────────────────────────────────
 
   output$winners_table <- renderUI({
-    t <- tariff_loss()
+    rs  <- revenue_shock()
+    con <- consumer_savings()
+    fe  <- farm_exit()
     ca <- cap_adjusted()
     b <- baseline()
 
     # Total farmer loss = revenue loss + lost Búvörusamningar
-    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    total_farmer_loss <- rs$total_loss_eur + b$current_eur
     net_farmer <- ca$total - total_farmer_loss
-
-    badge <- function(label, color) {
-      sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
-    }
 
     rows <- sprintf('
       <tr style="background:%s;">
@@ -1532,20 +1501,20 @@ server <- function(input, output, session) {
       if (net_farmer >= 0) badge("Jafnvægi", col_moss) else badge("Tap", col_red),
       # Sub-row: revenue loss from tariffs
       col_grey,
-      col_red, t$total_loss_eur,
+      col_red, rs$total_loss_eur,
       # Sub-row: lost Búvörusamningar pot
       col_grey,
       col_anc, b$current_eur,
       badge("Fastur pottur tapadur", col_anc),
       # Consumer row
       col_cloud,
-      col_moss, t$consumer_save_eur, badge("Ávinningur", col_moss),
+      col_moss, con$consumer_save_eur, badge("Ávinningur", col_moss),
       # Treasury row
       col_red,
       badge("Hlutlægt/Tap", col_basalt),
       # Rural row
       col_cloud,
-      format(t$farms_lost, big.mark = "."),
+      format(fe$farms_lost, big.mark = "."),
       badge("Áhættulegt", col_red)
     )
 
@@ -1573,9 +1542,6 @@ server <- function(input, output, session) {
     cb <- cap_baseline()
     ca <- cap_adjusted()
 
-    badge <- function(label, color) {
-      sprintf('<span style="display:inline-block;padding:3px 12px;border-radius:4px;background:%s;color:#fff;font-size:11px;font-weight:600;font-family:Montserrat,sans-serif;">%s</span>', color, label)
-    }
     badge_eu <- badge("ESB", col_p1)
     badge_is <- badge("Ísland", col_accent)
     badge_both <- badge("Samfjármögnun", col_anc)
@@ -1617,8 +1583,8 @@ server <- function(input, output, session) {
     )
 
     # Summary rows
-    t <- tariff_loss()
-    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    rs <- revenue_shock()
+    total_farmer_loss <- rs$total_loss_eur + b$current_eur
     net <- ca$total - total_farmer_loss
     net_color <- if (net >= 0) col_green else col_red
     net_sign <- if (net >= 0) sprintf("+€%.1fM", net) else sprintf("−€%.1fM", abs(net))
@@ -1654,7 +1620,7 @@ server <- function(input, output, session) {
       cb$total, ca$total,
       badge_eu, badge_is,
       col_anc, b$current_eur, badge_is,
-      col_red, t$total_loss_eur,
+      col_red, rs$total_loss_eur,
       col_cloud,
       col_red, total_farmer_loss,
       net_color, net_color, net_color, net_sign
@@ -1717,9 +1683,9 @@ server <- function(input, output, session) {
 
   output$mini_net <- renderUI({
     ca <- cap_adjusted()
-    t <- tariff_loss()
-    b <- baseline()
-    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    rs <- revenue_shock()
+    b  <- baseline()
+    total_farmer_loss <- rs$total_loss_eur + b$current_eur
     net <- ca$total - total_farmer_loss
     col <- if (net >= 0) col_green else col_red
     sign <- if (net >= 0) "+" else "−"
@@ -1785,15 +1751,14 @@ server <- function(input, output, session) {
                 cb$total, ca$total)
 
     fills <- c(col_before, col_p1,
-               col_before, col_nordic,
+               col_before, col_green,
                col_before, col_anc,
                col_before, col_accent)
 
     df <- data.frame(
       label = factor(labels, levels = labels),
       value = values,
-      fill = fills,
-      stringsAsFactors = FALSE
+      fill = fills
     )
 
     ggplot(df, aes(x = label, y = value, fill = fill)) +
