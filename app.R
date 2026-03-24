@@ -500,9 +500,15 @@ ui <- navbarPage(
             sliderInput("consumer_dairy_drop", "Mjólk & ostur — verðlækkun (%)",
                         min = 10, max = 40, value = 25, step = 1, post = "%"),
             helpText("ANR 2020: Ostur 21–34% tollvernd (vegin). Fljótandi mjólkurvörur lægra. Meðaltal ~25%."),
-            sliderInput("consumer_meat_drop", "Kjöt (lamb, nautgr., alifuglar) — verðlækkun (%)",
-                        min = 20, max = 55, value = 38, step = 1, post = "%"),
-            helpText("ANR 2020: Nautakjöt 35–42%, alifuglar 43–57%, lambakjöt flóknara (Ísland er útflutningsland). Meðaltal ~38%."),
+            sliderInput("consumer_lamb_drop", "Lambakjöt — verðlækkun (%)",
+                        min = 10, max = 55, value = 30, step = 1, post = "%"),
+            helpText("Ísland er nettóútflytjandi á lambakjöti — verðlækkun fer eftir samkeppni við ESB-lambakjöt (Írland, Wales). Lægra en nautakjöt þar sem innlend eftirspurn er sterk."),
+            sliderInput("consumer_beef_drop", "Nautakjöt — verðlækkun (%)",
+                        min = 20, max = 55, value = 37, step = 1, post = "%"),
+            helpText("ANR 2020: 35–42% vegin tollvernd. Uppboðsverð 2019: 683 ISK/kg. Beint mat á verðmun við ESB."),
+            sliderInput("consumer_poultry_drop", "Alifuglar — verðlækkun (%)",
+                        min = 25, max = 65, value = 48, step = 1, post = "%"),
+            helpText("ANR 2020: 43–57% vegin tollvernd — hæst meðal kjöttegunda. Uppboðsverð 2019: 371 ISK/kg."),
             sliderInput("consumer_egg_drop", "Egg — verðlækkun (%)",
                         min = 25, max = 65, value = 50, step = 1, post = "%"),
             helpText("Há tollvernd á eggjum samkvæmt tollskrá. Samræmist framleiðendahlutfalli (~55%)."),
@@ -677,9 +683,9 @@ server <- function(input, output, session) {
     veg_spend     <- input$food_spend * (CPI_W_VEG     / CPI_W_FOOD)
 
     save_dairy   <- dairy_spend   * input$consumer_dairy_drop / 100
-    save_lamb    <- lamb_spend    * input$consumer_meat_drop  / 100
-    save_beef    <- beef_spend    * input$consumer_meat_drop  / 100
-    save_poultry <- poultry_spend * input$consumer_meat_drop  / 100
+    save_lamb    <- lamb_spend    * input$consumer_lamb_drop    / 100
+    save_beef    <- beef_spend    * input$consumer_beef_drop    / 100
+    save_poultry <- poultry_spend * input$consumer_poultry_drop / 100
     save_eggs    <- egg_spend     * input$consumer_egg_drop   / 100
     save_veg     <- veg_spend     * input$consumer_veg_drop   / 100
 
@@ -689,7 +695,8 @@ server <- function(input, output, session) {
     consumer_breakdown <- data.frame(
       sector  = c("Mjólk & ostur", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
       spend   = c(dairy_spend, lamb_spend, beef_spend, poultry_spend, egg_spend, veg_spend),
-      drop    = c(input$consumer_dairy_drop, rep(input$consumer_meat_drop, 3),
+      drop    = c(input$consumer_dairy_drop,
+                  input$consumer_lamb_drop, input$consumer_beef_drop, input$consumer_poultry_drop,
                   input$consumer_egg_drop, input$consumer_veg_drop),
       savings = c(save_dairy, save_lamb, save_beef, save_poultry, save_eggs, save_veg),
       group   = c("dairy", "meat", "meat", "meat", "eggs", "veg"),
@@ -1287,17 +1294,11 @@ server <- function(input, output, session) {
                                     savings, drop, spend)),
                 hjust = -0.05, size = 3.3, colour = col_brown,
                 fontface = "bold", family = "Montserrat") +
-      # Bracket showing meat subtypes share same rate
-      annotate("segment", x = 3.5, xend = 5.5, y = -0.3, yend = -0.3,
-               colour = col_grey, linewidth = 0.4) +
-      annotate("text", x = 4.5, y = -0.5,
-               label = sprintf("Sama verðlækkun: %.0f%%", b$drop[b$group == "meat"][1]),
-               hjust = 0.5, size = 3, colour = col_grey, family = "Lora", fontface = "italic") +
       scale_fill_manual(values = fill_vals) +
       scale_y_continuous(expand = expansion(mult = c(0.08, 0.45))) +
       coord_flip() +
       labs(title = "Sparnaður neytenda eftir flokkum",
-           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  CPI-vegin út frá VIS01306 (Hagstofa 2025)  |  Kjöttegundir sundurliðaðar",
+           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  CPI-vegin út frá VIS01306 (Hagstofa 2025)  |  Sér verðlækkun fyrir hverja kjöttegund",
                               sum(b$savings)),
            x = NULL, y = "Ma.kr./ár", fill = NULL) +
       rekon_theme(base_size = 12) +
