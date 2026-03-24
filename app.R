@@ -129,6 +129,14 @@ app_css <- sprintf("
   }
   .context-box strong { color: %s; }
 
+  /* Navbar styling */
+  .navbar { background: #57534E !important; border: none; }
+  .navbar-brand { color: #fff !important; font-family: Montserrat; font-weight: 700; }
+  .navbar-nav > li > a { color: rgba(255,255,255,0.85) !important; font-family: Montserrat; font-weight: 600; font-size: 13px; }
+  .navbar-nav > li.active > a { color: #fff !important; border-bottom: 3px solid #4A90E2; background: transparent !important; }
+  .navbar-nav > li > a:hover { color: #fff !important; background: rgba(255,255,255,0.1) !important; }
+  .source-badge { display:inline-block; padding:2px 8px; border-radius:3px; font-size:10px; font-weight:600; font-family:Montserrat,sans-serif; color:#fff; margin-left:8px; vertical-align:middle; }
+
 ",
   col_cloud, col_brown,                         # body
   col_brown, col_brown,                          # h3, h4
@@ -146,234 +154,100 @@ app_css <- sprintf("
 # ══════════════════════════════════════════════════════════════════
 # UI
 # ══════════════════════════════════════════════════════════════════
-ui <- fluidPage(
-  tags$head(
+source_note_text <- p(class = "source-note",
+  "Höfundur: Rekon / Kári Gautason. Heimildir: LbhÍ Rit 179 (2025), ",
+  "Úttekt AMS/HÍ á aðildarviðræðum (2014), ",
+  "EU Reg. 2021/2115, Wageningen Economic Research, CAP Reform blog, ",
+  "Hagstofa Íslands, OECD Agricultural Policy Monitoring (2025), ",
+  "Kola, Hofreither & Rabinowicz (2000), ",
+  "Niemi (2003) \u2014 Static Welfare Effects.")
+
+ui <- navbarPage(
+  title = div(class = "brand-title", "rekon", span("| CAP stu\u00f0nings\u00e6tlun")),
+  id = "main_nav",
+  header = tags$head(
     tags$link(href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lora:wght@400;500;600&display=swap", rel = "stylesheet"),
     tags$style(HTML(app_css))
   ),
 
-  # ── Brand header ──
-  div(class = "brand-bar",
-    div(
-      div(class = "brand-title", "rekon", span("| CAP stuðningsáætlun")),
-      div(class = "brand-sub", "Samþætt líkan: tollaáhrif \u2192 framleiðsluviðbrögð \u2192 CAP stuðningur")
-    ),
-    div(style = "text-align:right;",
-      div(style = "font-size:11px; opacity:0.7;", "Kári Gautason \u2014 mars 2026"),
-      div(style = "font-size:11px; opacity:0.7;", "Grounded Analysis & Strategic Insight")
-    )
-  ),
-
   # ══════════════════════════════════════════════════════════════
-  # SINGLE PAGE — SIDEBAR LAYOUT
+  # TAB 1 — Niðurstöður (Results) — Full-width, all sections A–G
   # ══════════════════════════════════════════════════════════════
-  sidebarLayout(
-    sidebarPanel(
-      width = 4,
-
-      div(class = "context-box",
-        HTML("<strong>Samþætt líkan:</strong> Tollaafnám \u2192 verðlækkun \u2192
-        framboðsviðbrögð (teygni) \u2192 minni framleiðsla \u2192
-        lægri CAP greiðslur. Byggt á reynslu Finnlands og Svíþjóðar 1995.")
-      ),
-
-      # ── Section 1: Grunnforsendur ──
-      div(class = "sidebar-section", "Grunnforsendur"),
-      sliderInput("eligible_ha", "Styrkhæft land (ha)",
-                  min = 80000, max = 400000, value = 200000, step = 10000,
-                  pre = "", post = " ha"),
-      helpText("120k = ræktað land. 200k = ræktað + viðhaldið tún. Source: LbhÍ 2025, FAO."),
-      sliderInput("current_support_isk", "Núverandi stuðningur (ma.kr.)",
-                  min = 14, max = 30, value = 18, step = 0.5,
-                  pre = "", post = " ma.kr."),
-      helpText("Búvörusamningar."),
-      numericInput("eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
-      sliderInput("farms_now", "Fjöldi búa í dag",
-                  min = 1500, max = 4000, value = 2500, step = 100),
-
-      hr(),
-
-      # ── Section 2: Framleiðsla í dag ──
-      div(class = "sidebar-section", "Framleiðsla í dag"),
-      sliderInput("milk_litres", "Mjólkurframleiðsla (M lítr.)",
-                  min = 120, max = 170, value = 145, step = 5, post = "M L"),
-      sliderInput("ewes", "Ær (fjöldi)",
-                  min = 200000, max = 500000, value = 400000, step = 10000),
-      sliderInput("cattle", "Nautgripir (fjöldi)",
-                  min = 20000, max = 50000, value = 31000, step = 1000),
-
-      helpText("Framleiðsluverðmæti á núverandi innlendu verði:"),
-      sliderInput("dairy_val", "Mjólkurvörur (ma.kr.)",
-                  min = 10, max = 30, value = 19, step = 0.5, post = " ma.kr."),
-      sliderInput("lamb_val", "Kindakjöt (ma.kr.)",
-                  min = 3, max = 15, value = 7, step = 0.5, post = " ma.kr."),
-      sliderInput("beef_val", "Nautakjöt (ma.kr.)",
-                  min = 1, max = 8, value = 3, step = 0.5, post = " ma.kr."),
-      sliderInput("egg_val", "Egg og alifuglar (ma.kr.)",
-                  min = 0.5, max = 5, value = 2, step = 0.5, post = " ma.kr."),
-      sliderInput("veg_val", "Grænmeti og gróðurhús (ma.kr.)",
-                  min = 1, max = 8, value = 4, step = 0.5, post = " ma.kr."),
-
-      hr(),
-
-      # ── Section 3: Tollaáhrif — Verðlækkun ──
-      div(class = "sidebar-section", "Tollaáhrif \u2014 Verðlækkun"),
-      helpText("Byggð á reynslu Finnlands 1995. Hægt að aðlaga."),
-
-      sliderInput("dairy_drop", "Mjólk \u2014 verðlækkun",
-                  min = 10, max = 50, value = 30, step = 1, post = "%"),
-      helpText("Finnland: \u221228% til \u221232%."),
-      sliderInput("lamb_drop", "Kindakjöt \u2014 verðlækkun",
-                  min = 15, max = 60, value = 45, step = 1, post = "%"),
-      helpText("Finnland nautakjöt: \u221238% til \u221243%. Lambakjöt líklega hærra."),
-      sliderInput("beef_drop", "Nautakjöt \u2014 verðlækkun",
-                  min = 15, max = 55, value = 40, step = 1, post = "%"),
-      sliderInput("egg_drop", "Egg/alifuglar \u2014 verðlækkun",
-                  min = 20, max = 70, value = 55, step = 1, post = "%"),
-      helpText("Finnland egg: \u221265% til \u221268%. Ísland líkl. lægra v/ flutnkostn."),
-      sliderInput("veg_drop", "Grænmeti \u2014 verðlækkun",
-                  min = 5, max = 40, value = 20, step = 1, post = "%"),
-      helpText("Hluti ræktar í gróðurhúsum m/ jarðvarma. Minni samkeppnisáhrif."),
-
-      hr(),
-
-      # ── Section 4: Framboðsviðbrögð ──
-      div(class = "sidebar-section", "Framboðsviðbrögð"),
-      helpText("Framboðsteygni: hversu mikið framleiðsla lækkar þegar verð lækkar."),
-
-      sliderInput("elast_dairy", "Mjólkurteygni",
-                  min = 0.1, max = 0.8, value = 0.4, step = 0.05),
-      helpText("10% verðlækkun \u2192 4% framleiðslulækkun (við 0.4)"),
-      sliderInput("elast_sheep", "Sauðfjárteygni",
-                  min = 0.1, max = 1.0, value = 0.5, step = 0.05),
-      sliderInput("elast_beef", "Nautgripateygni",
-                  min = 0.1, max = 0.8, value = 0.4, step = 0.05),
-      sliderInput("land_abandon", "Landyfirgefning (%)",
-                  min = 5, max = 40, value = 15, step = 1, post = "%"),
-      helpText("Hlutfall lands sem fellur úr notkun vegna samdráttar."),
-      helpText("Finnland: mjólk 0.3\u20130.5, sauðfé 0.4\u20130.7. Byggð á Kola et al. (2000)"),
-
-      hr(),
-
-      # ── Section 5: CAP greiðsluhlutföll ──
-      div(class = "sidebar-section", "CAP greiðsluhlutföll"),
-      sliderInput("p1_rate", "Stoð 1: Greiðsla á hektara (\u20ac/ha)",
-                  min = 100, max = 400, value = 200, step = 10, pre = "\u20ac"),
-      helpText("EU lágmark: \u20ac200 (2023), \u20ac215 (2027). EU meðaltal: ~\u20ac243."),
-      sliderInput("milk_rate", "Mjólkurgreiðsla (\u20ac/lítra)",
-                  min = 0.04, max = 0.15, value = 0.09, step = 0.01, pre = "\u20ac"),
-      helpText("Finnland: \u20ac0.07 (suður) \u2013 \u20ac0.11 (Lappland)"),
-      sliderInput("ewe_rate", "Greiðsla á á (\u20ac/kind)",
-                  min = 10, max = 40, value = 25, step = 1, pre = "\u20ac"),
-      helpText("ESB hámark í tengdum greiðslum: \u20ac28/kind."),
-      sliderInput("cattle_rate", "Greiðsla á grip (\u20ac/grip)",
-                  min = 100, max = 400, value = 200, step = 10, pre = "\u20ac"),
-      helpText("Finnland: \u20ac150\u2013350 eftir svæði og tegund. Meðaltal ~\u20ac200."),
-      sliderInput("anc_rate", "ANC greiðsla á hektara (\u20ac/ha)",
-                  min = 100, max = 450, value = 250, step = 10, pre = "\u20ac"),
-      helpText("Hámark norðan 62\u00b0: \u20ac450/ha. Finnland meðaltal: ~\u20ac217/ha."),
-      sliderInput("eu_cofinance", "ESB-hlutfall af ANC (%)",
-                  min = 30, max = 75, value = 55, step = 5, post = "%"),
-      helpText("Fer eftir þróunarstigi svæðis. Háþróuð ríki: ~40%. Jaðarsvæði: ~55\u201375%."),
-
-      hr(),
-
-      # ── Section 6: Neytendur og bústöðvun ──
-      div(class = "sidebar-section", "Neytendur og bústöðvun"),
-      sliderInput("food_spend", "Matarútgjöld heimila (ma.kr./ár)",
-                  min = 100, max = 250, value = 170, step = 10, post = " ma.kr."),
-      helpText("Hagstofa: ~170 ma.kr. Matvælaverð á Íslandi 48% yfir ESB-meðaltali."),
-      sliderInput("consumer_drop", "Áætluð matvælaverðlækkun (%)",
-                  min = 5, max = 30, value = 15, step = 1, post = "%"),
-      helpText("Finnland: \u221211%. Ísland líklega meira (stærri tollgat)."),
-      sliderInput("farm_exit_10y", "Bústöðvun á 10 árum (%)",
-                  min = 10, max = 60, value = 35, step = 1, post = "%"),
-      helpText("Finnland: \u221238% á 17 árum. Mjólkurbú: \u221282% á 24 árum."),
-
-      hr(),
-      p(class = "source-note",
-        "Höfundur: Rekon / Kári Gautason. Heimildir: LbhÍ Rit 179 (2025), ",
-        "Úttekt AMS/HÍ á aðildarviðræðum (2014), ",
-        "EU Reg. 2021/2115, Wageningen Economic Research, CAP Reform blog, ",
-        "Hagstofa Íslands, OECD Agricultural Policy Monitoring (2025), ",
-        "Kola, Hofreither & Rabinowicz (2000), ",
-        "Niemi (2003) \u2014 Static Welfare Effects.")
-    ),
-
-    # ══════════════════════════════════════════════════════════════
-    # MAIN PANEL
-    # ══════════════════════════════════════════════════════════════
-    mainPanel(
-      width = 8,
-
-      # ── Row 1: Key Metrics ──
+  tabPanel("\U0001f4ca Ni\u00f0urst\u00f6\u00f0ur", value = "results",
+    fluidPage(
+      # ── Key Metrics — two rows ──
       fluidRow(
         column(3, div(class = "metric-box loss",
-                      div(class = "metric-label", "Tekjutap bænda"),
+                      div(class = "metric-label", "Tekjutap b\u00e6nda"),
                       uiOutput("metric_loss"))),
         column(3, div(class = "metric-box cap",
-                      div(class = "metric-label", "CAP leiðrétt"),
+                      div(class = "metric-label", "CAP lei\u00f0r\u00e9tt"),
                       uiOutput("metric_cap_adj"))),
         column(3, div(class = "metric-box gap",
-                      div(class = "metric-label", "Nettó staða"),
+                      div(class = "metric-label", "Nett\u00f3 sta\u00f0a"),
                       uiOutput("metric_net"))),
         column(3, div(class = "metric-box gain",
-                      div(class = "metric-label", "Sparnaður neytenda"),
+                      div(class = "metric-label", "Sparna\u00f0ur neytenda"),
                       uiOutput("metric_consumer")))
       ),
       fluidRow(
         column(4, div(class = "metric-box eu",
-                      div(class = "metric-label", "Núverandi kerfi (fastur pottur)"),
+                      div(class = "metric-label", "N\u00faverandi kerfi (fastur pottur)"),
                       uiOutput("metric_fixed_pot"))),
         column(4, div(class = "metric-box farm",
-                      div(class = "metric-label", "Stuðningur á bú — núverandi kerfi"),
+                      div(class = "metric-label", "Stu\u00f0ningur \u00e1 b\u00fa \u2014 n\u00faverandi kerfi"),
                       uiOutput("metric_per_farm_current"))),
         column(4, div(class = "metric-box rate",
-                      div(class = "metric-label", "Tapaður pottspólstri"),
+                      div(class = "metric-label", "Tapa\u00f0ur p\u00fa\u00f0i"),
                       uiOutput("metric_cushion_lost")))
       ),
 
       hr(class = "section-divider"),
 
       # ── Section A: Verðáhrif ──
-      h4("A. Verðáhrif \u2014 Áhrif tollaafnáms á framleiðendaverð"),
+      h4("A. Ver\u00f0\u00e1hrif \u2014 \u00c1hrif tollaafn\u00e1ms \u00e1 framlei\u00f0endaver\u00f0",
+         tags$span(class = "source-badge", style = paste0("background:", col_anc), "Hagfr\u00e6\u00f0i")),
       plotOutput("price_impact_chart", height = "380px"),
 
       hr(class = "section-divider"),
 
       # ── Section B: Framleiðsluviðbrögð ──
-      h4("B. Framleiðsluviðbrögð \u2014 Samdráttur vegna verðlækkunar"),
+      h4("B. Framlei\u00f0sluvið br\u00f6g\u00f0 \u2014 Samdr\u00e1ttur vegna ver\u00f0l\u00e6kkunar",
+         tags$span(class = "source-badge", style = paste0("background:", col_anc), "Hagfr\u00e6\u00f0i")),
       div(class = "context-box",
-        HTML("<strong>Keðjuáhrifin:</strong> Verðlækkun \u2192 framboðsteygni \u2192 samdráttur í framleiðslu.
-        Td. ef mjólkurverð lækkar um 30% og teygni er 0.4, þá dregst framleiðsla saman um 12%.")
+        HTML("<strong>Keðjuáhrif in:</strong> Ver\u00f0l\u00e6kkun \u2192 frambo\u00f0steygni \u2192 samdr\u00e1ttur \u00ed framlei\u00f0slu.
+        Td. ef mj\u00f3lkurver\u00f0 l\u00e6kkar um 30% og teygni er 0.4, \u00fe\u00e1 dregst framlei\u00f0sla saman um 12%.")
       ),
       plotOutput("production_response_chart", height = "400px"),
 
       hr(class = "section-divider"),
 
-      # ── Section C: System Comparison — Fixed pot vs CAP ──
-      h4("C. Kerfismunur \u2014 Fastur pottur (núverandi) vs. per-unit (CAP)"),
+      # ── Section C: System Comparison ──
+      h4("C. Kerfismunur \u2014 Fastur pottur (n\u00faverandi) vs. per-unit (CAP)",
+         tags$span(class = "source-badge", style = paste0("background:", col_accent), "Sta\u00f0a + Hagfr\u00e6\u00f0i")),
       div(class = "context-box",
-        HTML("<strong>Lykilmunur:</strong> Búvörusamningar eru <em>fastur pottur</em> \u2014 þegar bú hætta,
-        skiptist sama upphæð á færri einingar og stuðningur á bú <em>hækkar</em>.
-        CAP er <em>per-unit</em> kerfi \u2014 þegar framleiðsla minnkar, lækka greiðslur í hlutfalli.
-        Þetta þýðir að yfirfærsla í CAP kostar ekki bara tollverndina, heldur einnig
-        þennan innbyggða púða núverandi kerfis.")
+        HTML("<strong>Lykilmunur:</strong> B\u00favörusamningar eru <em>fastur pottur</em> \u2014 \u00feegar b\u00fa h\u00e6tta,
+        skiptist sama upph\u00e6\u00f0 \u00e1 f\u00e6rri einingar og stu\u00f0ningur \u00e1 b\u00fa <em>h\u00e6kkar</em>.
+        CAP er <em>per-unit</em> kerfi \u2014 \u00feegar framlei\u00f0sla minnkar, l\u00e6kka grei\u00f0slur \u00ed hlutfalli.
+        \u00debetta \u00fey\u00f0ir a\u00f0 yfirfærsla \u00ed CAP kostar ekki bara tollverni\u00f0na, heldur einnig
+        \u00feennan innbygg\u00f0an p\u00fa\u00f0a n\u00faverandi kerfis.")
       ),
       plotOutput("system_comparison_chart", height = "420px"),
       uiOutput("system_comparison_table"),
 
       hr(class = "section-divider"),
 
-      # ── Section D: CAP stuðningur — Leiðrétt ──
-      h4("D. CAP stuðningur \u2014 Leiðrétt fyrir framleiðslusamdrætti"),
+      # ── Section D: CAP stuðningur ──
+      h4("D. CAP stu\u00f0ningur \u2014 Lei\u00f0r\u00e9tt fyrir framlei\u00f0slusamdr\u00e6tti",
+         tags$span(class = "source-badge", style = paste0("background:", col_p1), "ESB Samningur")),
       plotOutput("cap_comparison_chart", height = "420px"),
       uiOutput("payer_bar_html"),
 
       hr(class = "section-divider"),
 
       # ── Section E: Heildarjafnvægi ──
-      h4("E. Heildarjafnvægi \u2014 Tekjutap vs. CAP vs. Neytendur"),
+      h4("E. Heildarjafnv\u00e6gi \u2014 Tekjutap vs. CAP vs. Neytendur",
+         tags$span(class = "source-badge", style = paste0("background:", col_accent), "Allt")),
       fluidRow(
         column(6, plotOutput("balance_chart", height = "340px")),
         column(6, plotOutput("farm_projection", height = "340px"))
@@ -381,26 +255,247 @@ ui <- fluidPage(
 
       hr(class = "section-divider"),
 
-      # ── Section F: Winners/losers table ──
-      h4("F. Ávinningur og kostnaður \u2014 Hver hagnast?"),
+      # ── Section F: Winners/losers ──
+      h4("F. \u00c1vinningur og kostna\u00f0ur \u2014 Hver hagnast?",
+         tags$span(class = "source-badge", style = paste0("background:", col_accent), "Allt")),
       uiOutput("winners_table"),
 
       hr(class = "section-divider"),
 
-      # ── Section G: Detail breakdown table ──
-      h4("G. Sundurliðun \u2014 Grunnlína vs. Leiðrétt"),
+      # ── Section G: Detail breakdown ──
+      h4("G. Sundurli\u00f0un \u2014 Grunnl\u00edna vs. Lei\u00f0r\u00e9tt",
+         tags$span(class = "source-badge", style = paste0("background:", col_accent), "Allt")),
       uiOutput("detail_table_html"),
 
       p(class = "source-note",
-        "Athugasemd: Þetta líkan er samþætt. Tollaafnám leiðir til verðlækkunar, ",
-        "sem dregur úr framleiðslu (eftir framboðsteygni), ",
-        "sem aftur lækkar CAP greiðslur. Auk þess er tekið tillit til kerfismunarins: ",
-        "Búvörusamningar eru fastur pottur (samdrátt = meiri stuðningur á bú), ",
-        "en CAP er per-unit kerfi (samdráttur = lægri heildargreiðslur). ",
-        "Þessi falinn kostnaður er sýndur í kafla C. ",
-        "Raunveruleg áhrif fara eftir aðlögunartíma, ",
-        "sérákvæðum í aðildarsamningi og viðbrögðum framleiðenda. ",
-        "Finnland fékk 5 ára aðlögunartímabil.")
+        "Athugasemd: \u00dEetta l\u00edkan er samþætt. Tollaafn\u00e1m leiðir til ver\u00f0l\u00e6kkunar, ",
+        "sem dregur \u00far framlei\u00f0slu (eftir frambo\u00f0steygni), ",
+        "sem aftur l\u00e6kkar CAP grei\u00f0slur. Auk \u00fe ess er tekið tillit til kerfismunarins: ",
+        "B\u00favörusamningar eru fastur pottur (samdr\u00e1tt = meiri stu\u00f0ningur \u00e1 b\u00fa), ",
+        "en CAP er per-unit kerfi (samdr\u00e1ttur = l\u00e6gri heildargreiðslur). ",
+        "\u00dEessi falinn kostna\u00f0ur er s\u00fdndur \u00ed kafla C. ",
+        "Raunveruleg \u00e1hrif fara eftir a\u00f0l\u00f6gunart\u00edma, ",
+        "s\u00e9r\u00e1kvæðum \u00ed a\u00f0ildarsamningi og vi\u00f0br\u00f6gðum framlei\u00f0enda. ",
+        "Finnland fékk 5 ára a\u00f0l\u00f6gunart\u00edmabil.")
+    )
+  ),
+
+  # ══════════════════════════════════════════════════════════════
+  # TAB 2 — ESB Samningur (Negotiation)
+  # ══════════════════════════════════════════════════════════════
+  tabPanel("\U0001f527 ESB Samningur", value = "negotiation",
+    sidebarLayout(
+      sidebarPanel(
+        width = 4,
+
+        div(class = "context-box",
+          HTML("<strong>ESB samningsf orsendur:</strong> Stilltu CAP grei\u00f0sluhlutf\u00f6ll til a\u00f0 kanna
+          hva\u00f0 Ísland g\u00e6ti fengið \u00ed samningum. Forsendurnar h\u00e9r endurspegla m\u00f6guleg útkomu \u2014
+          n\u00faverandi EU bil \u00e1 grei\u00f0slum og sambærilegar ni\u00f0urst\u00f6\u00f0ur Finnlands og Svíþjóðar 1995.")
+        ),
+
+        div(class = "sidebar-section", "CAP grei\u00f0sluhlutf\u00f6ll"),
+        sliderInput("p1_rate", "Sto\u00f0 1: Grei\u00f0sla \u00e1 hektara (\u20ac/ha)",
+                    min = 100, max = 400, value = 200, step = 10, pre = "\u20ac"),
+        helpText("EU l\u00e1gmark: \u20ac200 (2023), \u20ac215 (2027). EU me\u00f0altal: ~\u20ac243."),
+        sliderInput("milk_rate", "Mj\u00f3lkurgrei\u00f0sla (\u20ac/l\u00edtra)",
+                    min = 0.04, max = 0.15, value = 0.09, step = 0.01, pre = "\u20ac"),
+        helpText("Finnland: \u20ac0.07 (su\u00f0ur) \u2013 \u20ac0.11 (Lappland)"),
+        sliderInput("ewe_rate", "Grei\u00f0sla \u00e1 á (\u20ac/kind)",
+                    min = 10, max = 40, value = 25, step = 1, pre = "\u20ac"),
+        helpText("ESB h\u00e1mark \u00ed tengdum grei\u00f0slum: \u20ac28/kind."),
+        sliderInput("cattle_rate", "Grei\u00f0sla \u00e1 grip (\u20ac/grip)",
+                    min = 100, max = 400, value = 200, step = 10, pre = "\u20ac"),
+        helpText("Finnland: \u20ac150\u2013350 eftir sv\u00e6\u00f0i og tegund. Me\u00f0altal ~\u20ac200."),
+        sliderInput("anc_rate", "ANC grei\u00f0sla \u00e1 hektara (\u20ac/ha)",
+                    min = 100, max = 450, value = 250, step = 10, pre = "\u20ac"),
+        helpText("H\u00e1mark nor\u00f0an 62\u00b0: \u20ac450/ha. Finnland me\u00f0altal: ~\u20ac217/ha."),
+        sliderInput("eu_cofinance", "ESB-hlutfall af ANC (%)",
+                    min = 30, max = 75, value = 55, step = 5, post = "%"),
+        helpText("Fer eftir \u00fe r\u00f3unarstigi sv\u00e6\u00f0is. H\u00e1\u00fero\u00f0a\u00f0 r\u00edki: ~40%. Ja\u00f0arsv\u00e6\u00f0i: ~55\u201375%."),
+
+        actionButton("go_results_2", "\u2192 Sj\u00e1 allar ni\u00f0urst\u00f6\u00f0ur",
+                     class = "btn btn-primary", style = "width:100%;margin-top:16px;"),
+
+        hr(),
+        source_note_text
+      ),
+
+      mainPanel(
+        width = 8,
+
+        h4("Bein fors\u00fdn \u2014 CAP grei\u00f0slur"),
+        p(style = "color:#6B7280; font-size:12px; margin-top:-8px; margin-bottom:16px;",
+          "Uppf\u00e6rist \u00ed raunt\u00edma vi\u00f0 breytingar"),
+
+        fluidRow(
+          column(3, uiOutput("mini_cap_baseline")),
+          column(3, uiOutput("mini_cap_adjusted")),
+          column(3, uiOutput("mini_net")),
+          column(3, uiOutput("mini_eu_vs_is"))
+        ),
+
+        plotOutput("mini_cap_chart", height = "380px"),
+
+        uiOutput("mini_payer_bar")
+      )
+    )
+  ),
+
+  # ══════════════════════════════════════════════════════════════
+  # TAB 3 — Núverandi staða (Status)
+  # ══════════════════════════════════════════════════════════════
+  tabPanel("\U0001f4cb N\u00faverandi sta\u00f0a", value = "status",
+    fluidPage(
+      h4("Grunnforsendur og framlei\u00f0sla \u00ed dag"),
+      p(style = "color:#6B7280; font-size:12px; margin-top:-8px; margin-bottom:16px;",
+        "Stilltu grunnforsendur og framlei\u00f0slut\u00f6lur til a\u00f0 a\u00f0laga l\u00edkani\u00f0 a\u00f0 raunverulegri st\u00f6\u00f0u."),
+
+      fluidRow(
+        column(6,
+          wellPanel(
+            style = "background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:20px;",
+            h4("Grunnforsendur", style = "margin-top:0;"),
+            sliderInput("eligible_ha", "Styrkhæft land (ha)",
+                        min = 80000, max = 400000, value = 200000, step = 10000,
+                        pre = "", post = " ha"),
+            helpText("120k = r\u00e6kta\u00f0 land. 200k = r\u00e6kta\u00f0 + via\u00f0haldia\u00f0 t\u00fan. Source: LbhÍ 2025, FAO."),
+            sliderInput("current_support_isk", "N\u00faverandi stu\u00f0ningur (ma.kr.)",
+                        min = 14, max = 30, value = 18, step = 0.5,
+                        pre = "", post = " ma.kr."),
+            helpText("B\u00favörusamningar."),
+            numericInput("eur_isk", "Gengi EUR/ISK", value = 143, min = 100, max = 200, step = 1),
+            sliderInput("farms_now", "Fj\u00f6ldi b\u00faa \u00ed dag",
+                        min = 1500, max = 4000, value = 2500, step = 100)
+          )
+        ),
+        column(6,
+          wellPanel(
+            style = "background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:20px;",
+            h4("Framlei\u00f0sla \u00ed dag", style = "margin-top:0;"),
+            sliderInput("milk_litres", "Mj\u00f3lkurframlei\u00f0sla (M l\u00edtr.)",
+                        min = 120, max = 170, value = 145, step = 5, post = "M L"),
+            sliderInput("ewes", "\u00c6r (fj\u00f6ldi)",
+                        min = 200000, max = 500000, value = 400000, step = 10000),
+            sliderInput("cattle", "Nautgripir (fj\u00f6ldi)",
+                        min = 20000, max = 50000, value = 31000, step = 1000),
+            helpText("Framlei\u00f0sluver\u00f0mæti \u00e1 n\u00faverandi innlendu ver\u00f0i:"),
+            sliderInput("dairy_val", "Mj\u00f3lkurvörur (ma.kr.)",
+                        min = 10, max = 30, value = 19, step = 0.5, post = " ma.kr."),
+            sliderInput("lamb_val", "Kindakjöt (ma.kr.)",
+                        min = 3, max = 15, value = 7, step = 0.5, post = " ma.kr."),
+            sliderInput("beef_val", "Nautakjöt (ma.kr.)",
+                        min = 1, max = 8, value = 3, step = 0.5, post = " ma.kr."),
+            sliderInput("egg_val", "Egg og alifuglar (ma.kr.)",
+                        min = 0.5, max = 5, value = 2, step = 0.5, post = " ma.kr."),
+            sliderInput("veg_val", "Gr\u00e6nmeti og gr\u00f3\u00f0urh\u00fas (ma.kr.)",
+                        min = 1, max = 8, value = 4, step = 0.5, post = " ma.kr.")
+          )
+        )
+      ),
+
+      actionButton("go_results_3", "\u2192 Sj\u00e1 ni\u00f0urst\u00f6\u00f0ur",
+                   class = "btn btn-primary", style = "margin-top:12px;"),
+
+      hr(),
+      source_note_text
+    )
+  ),
+
+  # ══════════════════════════════════════════════════════════════
+  # TAB 4 — Forsendur [Advanced]
+  # ══════════════════════════════════════════════════════════════
+  tabPanel("\u2699\ufe0f Forsendur [Advanced]", value = "assumptions",
+    fluidPage(
+      h4("Hagfr\u00e6\u00f0ilegar forsendur \u2014 Advanced stillingar"),
+      p(style = "color:#6B7280; font-size:12px; margin-top:-8px; margin-bottom:16px;",
+        "Stilltu tollaáhrif, frambo\u00f0sviðbrög\u00f0 og adrar hagfr\u00e6\u00f0ilegar forsendur."),
+
+      # WellPanel 1: Tollaáhrif
+      wellPanel(
+        style = "background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:20px;",
+        h4("Tollaáhrif \u2014 Ver\u00f0l\u00e6kkun", style = "margin-top:0;"),
+        div(class = "context-box",
+          HTML("<strong>Byggt \u00e1 reynslu Finnlands 1995:</strong> \u00dEegar Finnland gekk til li\u00f0s vi\u00f0 ESB,
+          l\u00e6kkuu\u00f0u framlei\u00f0endaver\u00f0 verulega. Mj\u00f3lk: \u221228\u201332%, nautakjöt: \u221238\u201343%,
+          egg: \u221265\u201368%. \u00cdsland \u00e6tti \u00e1 a\u00f0 fara saman\u00feer\u00f0ar.")
+        ),
+        fluidRow(
+          column(6,
+            sliderInput("dairy_drop", "Mj\u00f3lk \u2014 ver\u00f0l\u00e6kkun",
+                        min = 10, max = 50, value = 30, step = 1, post = "%"),
+            helpText("Finnland: \u221228% til \u221232%."),
+            sliderInput("lamb_drop", "Kindakjöt \u2014 ver\u00f0l\u00e6kkun",
+                        min = 15, max = 60, value = 45, step = 1, post = "%"),
+            helpText("Finnland nautakjöt: \u221238% til \u221243%. Lambakjöt líklega hærra."),
+            sliderInput("beef_drop", "Nautakjöt \u2014 ver\u00f0l\u00e6kkun",
+                        min = 15, max = 55, value = 40, step = 1, post = "%")
+          ),
+          column(6,
+            sliderInput("egg_drop", "Egg/alifuglar \u2014 ver\u00f0l\u00e6kkun",
+                        min = 20, max = 70, value = 55, step = 1, post = "%"),
+            helpText("Finnland egg: \u221265% til \u221268%. \u00cdsland l\u00edkl. l\u00e6gra v/ flutnkostn."),
+            sliderInput("veg_drop", "Gr\u00e6nmeti \u2014 ver\u00f0l\u00e6kkun",
+                        min = 5, max = 40, value = 20, step = 1, post = "%"),
+            helpText("Hluti r\u00e6ktar \u00ed gr\u00f3\u00f0urh\u00fasum m/ jar\u00f0varma. Minni samkeppnisáhrif.")
+          )
+        )
+      ),
+
+      # WellPanel 2: Framboðsviðbrögð
+      wellPanel(
+        style = "background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:20px;",
+        h4("Frambo\u00f0svi\u00f0br\u00f6g\u00f0", style = "margin-top:0;"),
+        div(class = "context-box",
+          HTML("<strong>Frambo\u00f0steygni:</strong> H versu mikið framlei\u00f0sla l\u00e6kkar \u00feegar ver\u00f0 l\u00e6kkar.
+          Teygni 0.4 \u00feý\u00f0ir a\u00f0 10% ver\u00f0l\u00e6kkun lei\u00f0ir til 4% framlei\u00f0slul\u00e6kkunar.
+          Bygg\u00f0 \u00e1 Kola et al. (2000) og reynslu Nor\u00f0urlanda.")
+        ),
+        fluidRow(
+          column(6,
+            sliderInput("elast_dairy", "Mj\u00f3lkurteygni",
+                        min = 0.1, max = 0.8, value = 0.4, step = 0.05),
+            helpText("10% ver\u00f0l\u00e6kkun \u2192 4% framlei\u00f0slul\u00e6kkun (vi\u00f0 0.4)"),
+            sliderInput("elast_sheep", "Sau\u00f0fj\u00e1rteygni",
+                        min = 0.1, max = 1.0, value = 0.5, step = 0.05)
+          ),
+          column(6,
+            sliderInput("elast_beef", "Nautgripateygni",
+                        min = 0.1, max = 0.8, value = 0.4, step = 0.05),
+            sliderInput("land_abandon", "Landyfirgefning (%)",
+                        min = 5, max = 40, value = 15, step = 1, post = "%"),
+            helpText("Hlutfall lands sem fellur \u00far notkun vegna samdr\u00e1ttar."),
+            helpText("Finnland: mj\u00f3lk 0.3\u20130.5, sau\u00f0fé 0.4\u20130.7. Bygg\u00f0 \u00e1 Kola et al. (2000)")
+          )
+        )
+      ),
+
+      # WellPanel 3: Neytendur og bústöðvun
+      wellPanel(
+        style = "background:#fff; border:1px solid #E5E7EB; border-radius:8px; padding:20px;",
+        h4("Neytendur og b\u00fast\u00f6\u00f0vun", style = "margin-top:0;"),
+        fluidRow(
+          column(6,
+            sliderInput("food_spend", "Matarútgjöld heimila (ma.kr./\u00e1r)",
+                        min = 100, max = 250, value = 170, step = 10, post = " ma.kr."),
+            helpText("Hagstofa: ~170 ma.kr. Matvælaverð \u00e1 \u00cdsland i 48% yfir ESB-me\u00f0altali."),
+            sliderInput("consumer_drop", "\u00c1ætlu\u00f0 matvælaverðl\u00e6kkun (%)",
+                        min = 5, max = 30, value = 15, step = 1, post = "%"),
+            helpText("Finnland: \u221211%. \u00cdsland l\u00edklega meira (st\u00e6rri tollgat).")
+          ),
+          column(6,
+            sliderInput("farm_exit_10y", "B\u00fast\u00f6\u00f0vun \u00e1 10 \u00e1rum (%)",
+                        min = 10, max = 60, value = 35, step = 1, post = "%"),
+            helpText("Finnland: \u221238% \u00e1 17 \u00e1rum. Mj\u00f3lkurb\u00fa: \u221282% \u00e1 24 \u00e1rum.")
+          )
+        )
+      ),
+
+      actionButton("go_results_4", "\u2192 Sj\u00e1 ni\u00f0urst\u00f6\u00f0ur",
+                   class = "btn btn-primary", style = "margin-top:12px;"),
+
+      hr(),
+      source_note_text
     )
   )
 )
@@ -531,7 +626,7 @@ server <- function(input, output, session) {
   tariff_loss <- reactive({
     fx <- input$eur_isk
     sectors <- data.frame(
-      sector = c("Mj\u00f3lkurv\u00f6rur", "Kindakj\u00f6t", "Nautakj\u00f6t", "Egg/alifuglar", "Gr\u00e6nmeti"),
+      sector = c("Mj\u00f3lkurvörur", "Kindakjöt", "Nautakjöt", "Egg/alifuglar", "Gr\u00e6nmeti"),
       value_isk = c(input$dairy_val, input$lamb_val, input$beef_val,
                     input$egg_val, input$veg_val),
       drop_pct = c(input$dairy_drop, input$lamb_drop, input$beef_drop,
@@ -647,7 +742,7 @@ server <- function(input, output, session) {
       div(class = "metric-value", style = paste0("color:", col_green),
           sprintf("\u20ac%.0fM", ca$total)),
       div(class = "metric-sub", style = paste0("color:", col_grey),
-          sprintf("%.0f%% lægra en grunnlína (\u20ac%.0fM)", abs(diff_pct), cb$total))
+          sprintf("%.0f%% l\u00e6gra en grunnl\u00edna (\u20ac%.0fM)", abs(diff_pct), cb$total))
     )
   })
 
@@ -696,7 +791,7 @@ server <- function(input, output, session) {
     tagList(
       div(class = "metric-value", sprintf("\u20ac%s", format(round(cs$per_farm_now), big.mark = "."))),
       div(class = "metric-sub", style = paste0("color:", col_moss),
-          sprintf("\u2192 \u20ac%s eftir b\u00fastö\u00f0vun (+%.0f%%)",
+          sprintf("\u2192 \u20ac%s eftir b\u00fast\u00f6\u00f0vun (+%.0f%%)",
                   format(round(cs$per_farm_after), big.mark = "."),
                   cs$farm_cushion))
     )
@@ -802,7 +897,7 @@ server <- function(input, output, session) {
                         labels = c("Grunnl\u00edna", "Eftir a\u00f0l\u00f6gun")) +
       scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
       coord_flip() +
-      labs(title = "Framlei\u00f0sluvi\u00f0br\u00f6g\u00f0 \u2014 Samdr\u00e1ttur vegna ver\u00f0l\u00e6kkunar",
+      labs(title = "Framlei\u00f0sluvið br\u00f6g\u00f0 \u2014 Samdr\u00e1ttur vegna ver\u00f0l\u00e6kkunar",
            subtitle = sprintf("Mj\u00f3lk: \u2212%.0f%%  |  Sau\u00f0f\u00e9: \u2212%.0f%%  |  Nautgr.: \u2212%.0f%%  |  Land: \u2212%.0f%%",
                               s$dairy_pct_change, s$sheep_pct_change, s$beef_pct_change, s$land_pct_change),
            x = NULL, y = NULL, fill = NULL) +
@@ -873,7 +968,7 @@ server <- function(input, output, session) {
                   inherit.aes = FALSE, fill = col_red, alpha = 0.08) +
       annotate("text",
                x = mean(exit_levels), y = mean(c(current_per_farm[6], cap_per_farm[6])) / 1000,
-               label = "Tap\u00f0ur p\u00fa\u00f0i", colour = col_red, size = 3.5,
+               label = "Tapa\u00f0ur p\u00fa\u00f0i", colour = col_red, size = 3.5,
                fontface = "italic", family = "Lora") +
       scale_colour_manual(values = c(col_p1, col_red)) +
       scale_linewidth_manual(values = c(1.5, 1.5)) +
@@ -935,7 +1030,7 @@ server <- function(input, output, session) {
               <td style="padding:8px 14px;text-align:right;color:%s;font-weight:700;">%.0f%%</td>
             </tr>
             <tr style="border-top:2px solid %s;background:%s;">
-              <td style="padding:10px 14px;font-weight:700;color:%s;">Tapaður púði á bú</td>
+              <td style="padding:10px 14px;font-weight:700;color:%s;">Tapa\u00f0ur p\u00fa\u00f0i \u00e1 b\u00fa</td>
               <td style="padding:10px 14px;" colspan="2"></td>
               <td style="padding:10px 14px;text-align:right;font-weight:700;color:%s;font-size:15px;">\u2212\u20ac%s/b\u00fa</td>
             </tr>
@@ -1042,7 +1137,7 @@ server <- function(input, output, session) {
   })
 
   # ────────────────────────────────────────────────────────────────
-  # SECTION D: Balance chart + Farm projection
+  # SECTION E: Balance chart + Farm projection
   # ────────────────────────────────────────────────────────────────
 
   output$balance_chart <- renderPlot({
@@ -1118,7 +1213,7 @@ server <- function(input, output, session) {
   }, res = 110, bg = "transparent")
 
   # ────────────────────────────────────────────────────────────────
-  # SECTION E: Winners/losers table
+  # SECTION F: Winners/losers table
   # ────────────────────────────────────────────────────────────────
 
   output$winners_table <- renderUI({
@@ -1199,7 +1294,7 @@ server <- function(input, output, session) {
       col_moss, t$consumer_save_eur, badge("\u00c1vinningur", col_moss),
       # Treasury row
       col_red,
-      badge("Hlutlaust/Tap", col_basalt),
+      badge("Hlutlægt/Tap", col_basalt),
       # Rural row
       col_cloud,
       format(t$farms_lost, big.mark = "."),
@@ -1221,7 +1316,7 @@ server <- function(input, output, session) {
   })
 
   # ────────────────────────────────────────────────────────────────
-  # SECTION F: Detail breakdown table — Baseline vs Adjusted
+  # SECTION G: Detail breakdown table — Baseline vs Adjusted
   # ────────────────────────────────────────────────────────────────
 
   output$detail_table_html <- renderUI({
@@ -1330,6 +1425,149 @@ server <- function(input, output, session) {
       '</tbody></table>'
     ))
   })
+
+  # ────────────────────────────────────────────────────────────────
+  # NAVIGATION BUTTONS
+  # ────────────────────────────────────────────────────────────────
+
+  observeEvent(input$go_results_2, {
+    updateNavbarPage(session, "main_nav", selected = "results")
+  })
+
+  observeEvent(input$go_results_3, {
+    updateNavbarPage(session, "main_nav", selected = "results")
+  })
+
+  observeEvent(input$go_results_4, {
+    updateNavbarPage(session, "main_nav", selected = "results")
+  })
+
+  # ────────────────────────────────────────────────────────────────
+  # MINI OUTPUTS FOR TAB 2
+  # ────────────────────────────────────────────────────────────────
+
+  output$mini_cap_baseline <- renderUI({
+    cb <- cap_baseline()
+    div(class = "metric-box cap",
+      div(class = "metric-label", "CAP Grunnl\u00edna"),
+      div(class = "metric-value", style = paste0("color:", col_p1), sprintf("\u20ac%.0fM", cb$total)),
+      div(class = "metric-sub", style = paste0("color:", col_grey), "Fyrir framlei\u00f0slusamdr\u00e1tt")
+    )
+  })
+
+  output$mini_cap_adjusted <- renderUI({
+    ca <- cap_adjusted()
+    cb <- cap_baseline()
+    diff_pct <- (ca$total - cb$total) / cb$total * 100
+    div(class = "metric-box cap",
+      div(class = "metric-label", "CAP Lei\u00f0r\u00e9tt"),
+      div(class = "metric-value", style = paste0("color:", col_green), sprintf("\u20ac%.0fM", ca$total)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("%.0f%% breyting", diff_pct))
+    )
+  })
+
+  output$mini_net <- renderUI({
+    ca <- cap_adjusted()
+    t <- tariff_loss()
+    b <- baseline()
+    total_farmer_loss <- t$total_loss_eur + b$current_eur
+    net <- ca$total - total_farmer_loss
+    col <- if (net >= 0) col_green else col_red
+    sign <- if (net >= 0) "+" else "\u2212"
+    div(class = "metric-box gap",
+      div(class = "metric-label", "Nett\u00f3 sta\u00f0a"),
+      div(class = "metric-value", style = paste0("color:", col),
+          sprintf("%s\u20ac%.0fM", sign, abs(net))),
+      div(class = "metric-sub", style = paste0("color:", col_grey), "CAP vs. heildartap")
+    )
+  })
+
+  output$mini_eu_vs_is <- renderUI({
+    ca <- cap_adjusted()
+    total <- ca$eu_pays + ca$iceland_pays
+    eu_pct <- round(ca$eu_pays / total * 100)
+    div(class = "metric-box eu",
+      div(class = "metric-label", "ESB hlutfall"),
+      div(class = "metric-value", style = paste0("color:", col_p1), sprintf("%s%%", eu_pct)),
+      div(class = "metric-sub", style = paste0("color:", col_grey),
+          sprintf("ESB: \u20ac%.0fM | \u00cds: \u20ac%.0fM", ca$eu_pays, ca$iceland_pays))
+    )
+  })
+
+  output$mini_payer_bar <- renderUI({
+    ca <- cap_adjusted()
+    total <- ca$eu_pays + ca$iceland_pays
+    eu_pct <- round(ca$eu_pays / total * 100)
+    is_pct <- 100 - eu_pct
+    HTML(sprintf('
+      <div style="margin:18px 0 8px 0; font-family:Montserrat,sans-serif;">
+        <div style="font-size:13px;font-weight:600;color:%s;margin-bottom:8px;">
+          Hver borgar? (lei\u00f0r\u00e9tt) &mdash; ESB: \u20ac%.0fM (%s%%) &nbsp;|&nbsp; \u00cdsland: \u20ac%.0fM (%s%%)
+        </div>
+        <div style="display:flex;height:32px;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            ESB \u20ac%.0fM
+          </div>
+          <div style="width:%s%%;background:%s;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;">
+            \u00cdsland \u20ac%.0fM
+          </div>
+        </div>
+      </div>',
+      col_brown,
+      ca$eu_pays, eu_pct, ca$iceland_pays, is_pct,
+      eu_pct, col_p1, ca$eu_pays,
+      is_pct, col_accent, ca$iceland_pays
+    ))
+  })
+
+  output$mini_cap_chart <- renderPlot({
+    cb <- cap_baseline()
+    ca <- cap_adjusted()
+    b <- baseline()
+
+    labels <- c("Sto\u00f0 1\nGrunnl.", "Sto\u00f0 1\nLei\u00f0r.",
+                "Art. 142\nGrunnl.", "Art. 142\nLei\u00f0r.",
+                "ANC\nGrunnl.", "ANC\nLei\u00f0r.",
+                "Samtals\nGrunnl.", "Samtals\nLei\u00f0r.")
+
+    values <- c(cb$p1, ca$p1,
+                cb$nordic, ca$nordic,
+                cb$anc_total, ca$anc_total,
+                cb$total, ca$total)
+
+    fills <- c(col_before, col_p1,
+               col_before, col_nordic,
+               col_before, col_anc,
+               col_before, col_accent)
+
+    df <- data.frame(
+      label = factor(labels, levels = labels),
+      value = values,
+      fill = fills,
+      stringsAsFactors = FALSE
+    )
+
+    ggplot(df, aes(x = label, y = value, fill = fill)) +
+      geom_col(width = 0.6) +
+      geom_hline(yintercept = b$current_eur, linetype = "dashed", colour = col_brown, linewidth = 0.7) +
+      annotate("text", x = 8.4, y = b$current_eur + 2,
+               label = sprintf("N\u00faverandi: \u20ac%.0fM", b$current_eur),
+               hjust = 1, size = 2.8, colour = col_brown, fontface = "bold", family = "Montserrat") +
+      geom_text(aes(label = sprintf("\u20ac%.0fM", value)),
+                vjust = -0.5, size = 2.8, colour = col_brown,
+                fontface = "bold", family = "Montserrat") +
+      scale_fill_identity() +
+      scale_y_continuous(labels = function(x) paste0("\u20ac", x, "M"),
+                         expand = expansion(mult = c(0, 0.15))) +
+      labs(title = "CAP stu\u00f0ningur \u2014 Grunnl\u00edna vs. Lei\u00f0r\u00e9tt",
+           subtitle = sprintf("Grunnl\u00edna: \u20ac%.0fM  |  Lei\u00f0r\u00e9tt: \u20ac%.0fM  |  Munur: \u2212\u20ac%.0fM",
+                              cb$total, ca$total, cb$total - ca$total),
+           x = NULL, y = NULL) +
+      rekon_theme(base_size = 11) +
+      theme(axis.text.x = element_text(size = 8, lineheight = 1.1))
+  }, res = 110, bg = "transparent")
+
 }
 
 shinyApp(ui, server)
