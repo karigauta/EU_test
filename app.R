@@ -46,6 +46,8 @@ CPI_W_POULTRY  <- 48    # 011224 Alifuglakjöt
 CPI_W_VEG      <- 122   # 0117 Grænmeti og hnýði
 CPI_W_FOOD     <- 1386  # 011 Matur (food only, excluding beverages)
 
+APP_VERSION <- "v1.4"
+
 # ── Shared theme helper ──────────────────────────────────────────
 rekon_theme <- function(base_size = 13) {
   theme_minimal(base_family = "Montserrat", base_size = base_size) %+replace%
@@ -174,7 +176,7 @@ source_note_text <- p(class = "source-note",
   "Niemi (2003) — Static Welfare Effects.")
 
 ui <- navbarPage(
-  title = div(class = "brand-title", "rekon", span("| CAP stuðningsætlun")),
+  title = div(class = "brand-title", "rekon", span("| CAP stuðningsætlun"), span(APP_VERSION, style = "font-size:10px;font-weight:400;color:#9CA3AF;margin-left:8px;vertical-align:middle;")),
   id = "main_nav",
   header = tags$head(
     tags$link(href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Lora:wght@400;500;600&display=swap", rel = "stylesheet"),
@@ -437,21 +439,21 @@ ui <- navbarPage(
         fluidRow(
           column(6,
             sliderInput("dairy_drop", "Mjólk — verðlækkun",
-                        min = 10, max = 50, value = 30, step = 1, post = "%"),
+                        min = 0, max = 70, value = 30, step = 1, post = "%"),
             helpText("Finnland: −28% til −32%."),
             sliderInput("lamb_drop", "Kindakjöt — verðlækkun",
-                        min = 15, max = 60, value = 45, step = 1, post = "%"),
+                        min = 0, max = 70, value = 45, step = 1, post = "%"),
             helpText("Finnland nautakjöt: −38% til −43%. Lambakjöt líklega hærra."),
             sliderInput("beef_drop", "Nautakjöt — verðlækkun",
-                        min = 15, max = 55, value = 40, step = 1, post = "%"),
+                        min = 0, max = 70, value = 40, step = 1, post = "%"),
             helpText("ANR tollverndarskýrsla 2020: Nautakjöt 35–42% vegin tollvernd. Uppboðsverð 2019: 683 ISK/kg.")
           ),
           column(6,
             sliderInput("egg_drop", "Egg/alifuglar — verðlækkun",
-                        min = 20, max = 70, value = 55, step = 1, post = "%"),
+                        min = 0, max = 70, value = 55, step = 1, post = "%"),
             helpText("Finnland egg: −65% til −68%. Ísland líkl. lægra v/ flutnkostn."),
             sliderInput("veg_drop", "Grænmeti — verðlækkun",
-                        min = 5, max = 40, value = 20, step = 1, post = "%"),
+                        min = 0, max = 70, value = 20, step = 1, post = "%"),
             helpText("EES-bókun 3 þýðir að flest grænmeti er þegar tollfrítt. Gróðurhúsarækt (tómatar, agúrkur) er jarðhitaknúin og á litla samkeppni. Lágt sjálfgefið gildi (12%) byggist á skýrslu ANR 2020.")
           )
         )
@@ -521,7 +523,15 @@ ui <- navbarPage(
           column(6,
             sliderInput("farm_exit_10y", "Bústöðvun á 10 árum (%)",
                         min = 10, max = 60, value = 35, step = 1, post = "%"),
-            helpText("Finnland: −38% á 17 árum. Mjólkurbú: −82% á 24 árum.")
+            helpText("Finnland: −38% á 17 árum. Mjólkurbú: −82% á 24 árum."),
+            hr(style = "margin:16px 0 10px;"),
+            div(class = "sidebar-section", "Framleiðandahlutfall — yfirlit"),
+            helpText("Hversu stór hluti smásöluverðsins fer til framleiðanda í hverjum flokki."),
+            plotOutput("farm_share_pie", height = "240px"),
+            hr(style = "margin:16px 0 10px;"),
+            div(class = "sidebar-section", "Neytendaverðsbreyting — útreikningur"),
+            helpText("Reiknað sem: framleiðsludrop × framleiðandahlutfall = neytendadrop."),
+            uiOutput("consumer_drops_summary")
           )
         )
       ),
@@ -1322,6 +1332,76 @@ server <- function(input, output, session) {
         axis.text.y = element_text(size = 11)
       )
   }, res = 110, bg = "transparent")
+
+  # ────────────────────────────────────────────────────────────────
+  # Farm-gate price share pie chart (Tab 4 — Advanced)
+  # ────────────────────────────────────────────────────────────────
+  output$farm_share_pie <- renderPlot({
+    pie_data <- data.frame(
+      sector = c("Mjólk", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
+      share  = c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
+                 input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg),
+      fill   = c(col_p1, "#4A5C36", "#6B8B4A", "#8FAF6A", col_anc, col_moss),
+      stringsAsFactors = FALSE
+    )
+    pie_data$label <- sprintf("%s\n%d%%", pie_data$sector, pie_data$share)
+
+    ggplot(pie_data, aes(x = 2, y = share, fill = sector)) +
+      geom_col(width = 1, colour = "white", linewidth = 0.5) +
+      geom_text(aes(label = label),
+                position = position_stack(vjust = 0.5),
+                size = 3, colour = "white", fontface = "bold", family = "Montserrat") +
+      scale_fill_manual(values = setNames(pie_data$fill, pie_data$sector)) +
+      coord_polar(theta = "y", start = 0) +
+      xlim(0.5, 2.5) +
+      labs(title = NULL, x = NULL, y = NULL, fill = NULL) +
+      theme_void() +
+      theme(legend.position = "none",
+            plot.background = element_rect(fill = "transparent", colour = NA))
+  }, res = 110, bg = "transparent")
+
+  # ────────────────────────────────────────────────────────────────
+  # Consumer drops summary table (Tab 4 — Advanced)
+  # ────────────────────────────────────────────────────────────────
+  output$consumer_drops_summary <- renderUI({
+    rows <- list(
+      list("Mjólk", input$dairy_drop, input$farm_share_dairy),
+      list("Lambakjöt", input$lamb_drop, input$farm_share_lamb),
+      list("Nautakjöt", input$beef_drop, input$farm_share_beef),
+      list("Alifuglar", input$egg_drop, input$farm_share_poultry),
+      list("Egg", input$egg_drop, input$farm_share_eggs),
+      list("Grænmeti", input$veg_drop, input$farm_share_veg)
+    )
+    row_html <- paste(sapply(rows, function(r) {
+      prod  <- r[[2]]
+      share <- r[[3]]
+      cons  <- round(prod * share / 100, 1)
+      col   <- if (cons >= 15) col_red else if (cons >= 8) col_anc else col_green
+      sprintf(
+        '<tr style="border-bottom:1px solid #F3F4F6;">
+           <td style="padding:5px 8px;font-size:12px;">%s</td>
+           <td style="padding:5px 8px;text-align:right;font-size:12px;font-family:Montserrat;">%d%%</td>
+           <td style="padding:5px 8px;text-align:right;font-size:12px;font-family:Montserrat;">%d%%</td>
+           <td style="padding:5px 8px;text-align:right;font-weight:700;font-size:12px;font-family:Montserrat;color:%s;">%.1f%%</td>
+         </tr>',
+        r[[1]], prod, share, col, cons
+      )
+    }), collapse = "")
+    HTML(sprintf(
+      '<table style="width:100%%;border-collapse:collapse;margin-top:6px;">
+         <thead>
+           <tr style="background:#F3F4F6;">
+             <th style="padding:5px 8px;text-align:left;font-size:11px;color:%s;">Vara</th>
+             <th style="padding:5px 8px;text-align:right;font-size:11px;color:%s;">Framl.drop</th>
+             <th style="padding:5px 8px;text-align:right;font-size:11px;color:%s;">Hlutfall</th>
+             <th style="padding:5px 8px;text-align:right;font-size:11px;color:%s;">Neyt.drop</th>
+           </tr>
+         </thead>
+         <tbody>%s</tbody>
+       </table>',
+      col_grey, col_grey, col_grey, col_grey, row_html
+    ))
+  })
 
   # ────────────────────────────────────────────────────────────────
   # SECTION F: Winners/losers table
