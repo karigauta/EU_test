@@ -1,6 +1,7 @@
 library(shiny)
 library(ggplot2)
 library(scales)
+library(markdown)
 # ══════════════════════════════════════════════════════════════════
 # INTEGRATED CAP + TARIFF IMPACT MODEL FOR ICELAND
 # Rekon / Kári Gautason — March 2026
@@ -558,6 +559,17 @@ ui <- navbarPage(
 
       hr(),
       source_note_text
+    )
+  ),
+
+  # ══════════════════════════════════════════════════════════════
+  # TAB 5 — Heimildir (Sources)
+  # ══════════════════════════════════════════════════════════════
+  tabPanel("📚 Heimildir", value = "sources",
+    fluidPage(
+      div(style = "max-width:860px; margin:0 auto; padding:24px 12px;",
+        includeMarkdown("sources.md")
+      )
     )
   )
 )
