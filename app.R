@@ -527,7 +527,7 @@ ui <- navbarPage(
             hr(style = "margin:16px 0 10px;"),
             div(class = "sidebar-section", "Framleiðandahlutfall — yfirlit"),
             helpText("Hversu stór hluti smásöluverðsins fer til framleiðanda í hverjum flokki."),
-            plotOutput("farm_share_pie", height = "240px"),
+            plotOutput("farm_share_pie", height = "420px"),
             hr(style = "margin:16px 0 10px;"),
             div(class = "sidebar-section", "Neytendaverðsbreyting — útreikningur"),
             helpText("Reiknað sem: framleiðsludrop × framleiðandahlutfall = neytendadrop."),
@@ -1334,30 +1334,87 @@ server <- function(input, output, session) {
   }, res = 110, bg = "transparent")
 
   # ────────────────────────────────────────────────────────────────
-  # Farm-gate price share pie chart (Tab 4 — Advanced)
+  # Farm-gate price share: value chain breakdown (Tab 4 — Advanced)
+  # One donut per product showing producer share (dynamic) +
+  # fixed value-chain components (slaughter, processing, retail, etc.)
+  # Sources: AHDB 2024, USDA ERS, OECD Iceland 2025
   # ────────────────────────────────────────────────────────────────
   output$farm_share_pie <- renderPlot({
-    pie_data <- data.frame(
-      sector = c("Mjólk", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti"),
-      share  = c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
-                 input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg),
-      fill   = c(col_p1, "#4A5C36", "#6B8B4A", "#8FAF6A", col_anc, col_moss),
-      stringsAsFactors = FALSE
+    # Fixed value-chain splits for the non-farmer share (proportions summing to 1).
+    # Based on AHDB supply-chain margins, USDA ERS price spread reports.
+    chain_splits <- list(
+      "Mjólk"     = c("Vinnsla (Mjólkursamsalan)" = 0.42, "Pökkun" = 0.13, "Smásala" = 0.45),
+      "Lambakjöt" = c("Slátrun (SS/HB)" = 0.38, "Dreifing" = 0.12, "Smásala" = 0.50),
+      "Nautakjöt" = c("Slátrun" = 0.32, "Dreifing" = 0.18, "Smásala" = 0.50),
+      "Alifuglar" = c("Vinnsla" = 0.38, "Pökkun" = 0.12, "Smásala" = 0.50),
+      "Egg"       = c("Pökkun" = 0.28, "Dreifing" = 0.12, "Smásala" = 0.60),
+      "Grænmeti"  = c("Vinnsla/Pökkun" = 0.22, "Dreifing" = 0.18, "Smásala" = 0.60)
     )
-    pie_data$label <- sprintf("%s\n%d%%", pie_data$sector, pie_data$share)
 
-    ggplot(pie_data, aes(x = 2, y = share, fill = sector)) +
-      geom_col(width = 1, colour = "white", linewidth = 0.5) +
-      geom_text(aes(label = label),
-                position = position_stack(vjust = 0.5),
-                size = 3, colour = "white", fontface = "bold", family = "Montserrat") +
-      scale_fill_manual(values = setNames(pie_data$fill, pie_data$sector)) +
+    farm_shares <- c(
+      input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
+      input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg
+    )
+    products <- c("Mjólk", "Lambakjöt", "Nautakjöt", "Alifuglar", "Egg", "Grænmeti")
+
+    # Build long data frame
+    rows <- list()
+    for (i in seq_along(products)) {
+      prod <- products[i]
+      fs   <- farm_shares[i]
+      rem  <- 100 - fs
+      rows[[length(rows) + 1]] <- data.frame(
+        product   = prod,
+        component = "Framleiðandi",
+        value     = fs,
+        stringsAsFactors = FALSE
+      )
+      for (comp in names(chain_splits[[prod]])) {
+        rows[[length(rows) + 1]] <- data.frame(
+          product   = prod,
+          component = comp,
+          value     = rem * chain_splits[[prod]][[comp]],
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    df <- do.call(rbind, rows)
+    df$product <- factor(df$product, levels = products)
+
+    # Component colour palette — producer always green, chain steps grey shades
+    comp_cols <- c(
+      "Framleiðandi"              = col_green,
+      "Vinnsla (Mjólkursamsalan)" = "#8FA8C8",
+      "Vinnsla"                   = "#8FA8C8",
+      "Vinnsla/Pökkun"            = "#8FA8C8",
+      "Slátrun (SS/HB)"           = "#9AA5AF",
+      "Slátrun"                   = "#9AA5AF",
+      "Pökkun"                    = "#C0C8D0",
+      "Dreifing"                  = "#D4D8DC",
+      "Smásala"                   = "#EAECEE"
+    )
+
+    ggplot(df, aes(x = 2, y = value, fill = component)) +
+      geom_col(width = 1, colour = "white", linewidth = 0.35) +
+      geom_text(
+        aes(label = ifelse(value >= 7, sprintf("%.0f%%", value), "")),
+        position = position_stack(vjust = 0.5),
+        size = 2.6, colour = "white", fontface = "bold", family = "Montserrat"
+      ) +
+      scale_fill_manual(values = comp_cols) +
       coord_polar(theta = "y", start = 0) +
       xlim(0.5, 2.5) +
-      labs(title = NULL, x = NULL, y = NULL, fill = NULL) +
+      facet_wrap(~product, nrow = 2) +
+      labs(x = NULL, y = NULL, fill = NULL) +
       theme_void() +
-      theme(legend.position = "none",
-            plot.background = element_rect(fill = "transparent", colour = NA))
+      theme(
+        legend.position   = "bottom",
+        legend.text       = element_text(size = 8, family = "Montserrat", colour = col_grey),
+        legend.key.size   = unit(0.55, "lines"),
+        strip.text        = element_text(face = "bold", size = 10, colour = col_brown,
+                                         family = "Montserrat", margin = margin(b = 4)),
+        plot.background   = element_rect(fill = "transparent", colour = NA)
+      )
   }, res = 110, bg = "transparent")
 
   # ────────────────────────────────────────────────────────────────
