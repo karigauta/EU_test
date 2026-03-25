@@ -461,15 +461,15 @@ ui <- navbarPage(
             helpText("Finnland: −28% til −32%."),
             sliderInput("lamb_drop", "Kindakjöt — verðlækkun",
                         min = 0, max = 70, value = 45, step = 1, post = "%"),
-            helpText("Finnland nautakjöt: −38% til −43%. Lambakjöt líklega hærra."),
+            helpText("0% ef útflutningur gleypir alla umframframleiðslu (Kristófersson 2011). 45% = versta tilvik: innanlandsmarkaður brotnar saman vegna ódýrra alifugla."),
             sliderInput("beef_drop", "Nautakjöt — verðlækkun",
-                        min = 0, max = 70, value = 40, step = 1, post = "%"),
-            helpText("ANR tollverndarskýrsla 2020: Nautakjöt 35–42% vegin tollvernd. Uppboðsverð 2019: 683 ISK/kg.")
+                        min = 0, max = 70, value = 30, step = 1, post = "%"),
+            helpText("Kristófersson & Bjarnadóttir (2011): ~8% verðmunur við ESB. Finnland: −30%. ANR 2020: 35–42% vegin tollvernd. Miðgildi: 30%.")
           ),
           column(6,
             sliderInput("egg_drop", "Egg/alifuglar — verðlækkun",
-                        min = 0, max = 70, value = 55, step = 1, post = "%"),
-            helpText("Finnland egg: −65% til −68%. Ísland líkl. lægra v/ flutnkostn."),
+                        min = 0, max = 70, value = 45, step = 1, post = "%"),
+            helpText("Kristófersson & Bjarnadóttir (2011): egg −44%, alifuglar ~−50%. Finnland egg: −65–68% (hámark). Miðgildi: 45%."),
             sliderInput("veg_drop", "Grænmeti — verðlækkun",
                         min = 0, max = 70, value = 20, step = 1, post = "%"),
             helpText("EES-bókun 3 þýðir að flest grænmeti er þegar tollfrítt. Gróðurhúsarækt (tómatar, agúrkur) er jarðhitaknúin og á litla samkeppni. Lágt sjálfgefið gildi (12%) byggist á skýrslu ANR 2020.")

@@ -10,6 +10,9 @@ Hér eru taldar upp allar heimildir sem líkanið notar beint, skiptar eftir flo
 Landbúnaðarháskóli Íslands. Notað til að stilla grunngildi á heildarlandssvæði, fjölda búa og framleiðslutölur.
 [branda.lbhi.is/utgefid_efni/Rit_LbhI_179.pdf](https://branda.lbhi.is/utgefid_efni/Rit_LbhI_179.pdf)
 
+**Kristófersson, D.M. & Bjarnadóttir, E. (2011) — Staða íslensks landbúnaðar gagnvart aðild að Evrópusambandinu**
+Bændasamtök Íslands. Byggt á OECD-verðgögnum 2006–2009 og jafnvægisgengi 120 ISK/€. Helstu niðurstöður notaðar til að kvarða sjálfgefin gildi á verðlækkun: egg −44%, alifuglar ~−50%, nautakjöt ~8–30%, kindakjöt 0% (útflutningsforsenda). Einnig uppspretta að heildarmati á stuðningsþörf: 12–16 milljarðar ISK/ári (2010 verðlag). *Skjal fengist beint frá Bændasamtökum Íslands.*
+
 **Úttekt AMS/HÍ á aðildarviðræðum (2014)**
 Hagfræðistofnun Háskóla Íslands / AMS. Greining á hagsmunum Íslands af hugsanlegri ESB-aðild, landbúnaðarhlutinn. *Skjal aðgengilegt á stofnanalegum vettvangi en ekki fundið í opinni gagnasafn á netinu.*
 
