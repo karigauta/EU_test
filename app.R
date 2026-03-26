@@ -242,7 +242,7 @@ ui <- navbarPage(
 
       hr(class = "section-divider"),
 
-      # ── Section B: Framleiðsluviðbrögð ──
+      # ── Section B: Framleiðsluvið brögð ──
       h4("B. Framleiðsluvið brögð — Samdráttur vegna verðlækkunar",
          tags$span(class = "source-badge", style = paste0("background:", col_anc), "Hagfræði")),
       div(class = "context-box",
@@ -515,7 +515,7 @@ ui <- navbarPage(
                         min = 180, max = 400, value = 270, step = 10, post = " ma.kr."),
             helpText("Hagstofa THJ02105: 233 ma.kr. (2020 fastaverð). Við 2026 verðlag ~270–290 ma.kr. Heildarneysla á mat og drykkjarvörum."),
             div(class = "context-box",
-              HTML("<strong>CPI-vegið mat:</strong> Sparnaður neytenda er reiknaður sem: <em>verðlækkun framleiðanda × hlutfall framleiðandaverðs í smásöluverði × útgjöld á flokk</em>. Vogir úr VIS01306 (Hagstofa 2025). Hlutföll byggð á AHDB (UK), USDA ERS og OECD Iceland 2025.")
+              HTML("<strong>CPI-vegið mat:</strong> Sparnaður neytenda tekur nú tillit til bæði verðteygni og víxlteygni (cross-elasticity) eftir aðild. Heimildir byggja á Nordic accession modelum þar sem fuglakjöt er sterkur staðgengill fyrir naut/lamb. Vogir úr VIS01306 (Hagstofa 2025).")
             ),
             div(class = "sidebar-section", "Hlutfall framleiðandaverðs í smásöluverði"),
             helpText("Hversu stór hluti smásöluverðsins endurspeglar framleiðandaverðið? Hærra hlutfall þýðir að verðlækkun hjá framleiðanda skilar sér meira til neytenda."),
@@ -748,27 +748,57 @@ server <- function(input, output, session) {
   })
 
   # ────────────────────────────────────────────────────────────────
-  # REACTIVE: CONSUMER SAVINGS — CPI-weighted savings from price drops
-  # Depends on: food_spend, *_drop, farm_share_*, eur_isk
+  # REACTIVE: CONSUMER SAVINGS & DEMAND SHIFT (UPDATED WITH ELASTICITIES)
   # ────────────────────────────────────────────────────────────────
   consumer_savings <- reactive({
     fx      <- input$eur_isk
-    spends  <- input$food_spend *
+
+    # 1. Baseline spends based on static CPI weights
+    base_spends  <- input$food_spend *
                c(CPI_W_DAIRY, CPI_W_LAMB, CPI_W_BEEF,
                  CPI_W_POULTRY, CPI_W_EGGS, CPI_W_VEG) / CPI_W_FOOD
+
+    # 2. Retail Price Drops (expressed as negative decimals for the matrix)
     drops_p <- c(input$dairy_drop, input$lamb_drop, input$beef_drop,
                  input$egg_drop, input$egg_drop, input$veg_drop)
     shares  <- c(input$farm_share_dairy, input$farm_share_lamb, input$farm_share_beef,
                  input$farm_share_poultry, input$farm_share_eggs, input$farm_share_veg)
-    cons_drops <- drops_p * shares / 100
-    savings    <- spends * cons_drops / 100
+
+    # Calculate retail price % change
+    cons_drops_pct <- drops_p * shares / 100 
+    retail_price_change_dec <- -(cons_drops_pct / 100) 
+
+    # 3. Define the Nordic/Icelandic Cross-Elasticity Matrix
+    # Rows: Quantity Demanded (Dairy, Lamb, Beef, Poultry, Eggs, Veg)
+    # Cols: Price Change of   (Dairy, Lamb, Beef, Poultry, Eggs, Veg)
+    demand_elasticities <- matrix(c(
+      -0.30,  0.00,  0.00,  0.00,  0.00,  0.00,  # Dairy (Isolated)
+       0.00, -0.60, -0.10,  0.40,  0.00,  0.00,  # Lamb (Loses to Poultry, weak complement to Beef)
+       0.00, -0.10, -0.65,  0.45,  0.00,  0.00,  # Beef (Loses to Poultry, weak complement to Lamb)
+       0.00,  0.20,  0.25, -1.10,  0.00,  0.00,  # Poultry (Highly elastic, gains from red meat)
+       0.00,  0.00,  0.00,  0.00, -0.40,  0.00,  # Eggs (Isolated)
+       0.00,  0.00,  0.00,  0.00,  0.00, -0.30   # Veg (Isolated)
+    ), nrow = 6, byrow = TRUE)
+
+    # 4. Calculate Demand Shift (Quantity % Change)
+    # Matrix multiplication: Elasticity Matrix %*% Price Change Vector
+    quantity_change_dec <- as.numeric(demand_elasticities %*% retail_price_change_dec)
+
+    # 5. Calculate New Spending and Savings
+    # New spend = Base Spend * (1 + price_change) * (1 + quantity_change)
+    new_spends <- base_spends * (1 + retail_price_change_dec) * (1 + quantity_change_dec)
+
+    # Savings is the difference between what they would have spent vs what they now spend
+    savings <- base_spends - new_spends
+
     list(
       consumer_breakdown = data.frame(
         sector     = c("Mjólk & ostur","Lambakjöt","Nautakjöt","Alifuglar","Egg","Grænmeti"),
-        spend      = spends,
+        spend      = base_spends,
         prod_drop  = drops_p,
         farm_share = shares,
-        drop       = cons_drops,
+        drop       = cons_drops_pct,
+        qty_shift  = quantity_change_dec * 100,
         savings    = savings,
         group      = c("dairy","meat","meat","meat","eggs","veg")
       ),
@@ -1314,15 +1344,15 @@ server <- function(input, output, session) {
 
     ggplot(b, aes(x = sector, y = savings, fill = sector)) +
       geom_col(width = 0.6) +
-      geom_text(aes(label = sprintf("%.1f ma.kr.  (%.0f%% × %.0f%% = %.1f%%)",
-                                    savings, prod_drop, farm_share, drop)),  # prod% × share% = cons%
+      geom_text(aes(label = sprintf("%.1f ma.kr.  (Verð: -%.1f%% | Magn: %+.1f%%)",
+                                    savings, drop, qty_shift)), 
                 hjust = -0.05, size = 3.2, colour = col_brown,
                 fontface = "bold", family = "Montserrat") +
       scale_fill_manual(values = fill_vals) +
       scale_y_continuous(expand = expansion(mult = c(0.08, 0.55))) +
       coord_flip() +
       labs(title = "Sparnaður neytenda eftir flokkum",
-           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  Formúla: framleiðsludrop × framleiðandahlutfall = neytendadrop",
+           subtitle = sprintf("Samtals %.1f ma.kr./ár  |  Tekið tillit til verðteygni og víxlteygni (Magnbreyting sýnd)",
                               sum(b$savings)),
            x = NULL, y = "Ma.kr./ár", fill = NULL) +
       rekon_theme_flip(base_size = 12) +
